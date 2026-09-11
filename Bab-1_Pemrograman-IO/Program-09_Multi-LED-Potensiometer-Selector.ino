@@ -18,6 +18,10 @@
   LED menggunakan konfigurasi active-low:
   LOW  = menyala
   HIGH = mati
+
+  Push button menggunakan konfigurasi active-high:
+  HIGH = ditekan
+  LOW  = dilepas
 */
 
 // =========================
@@ -49,11 +53,11 @@ const int buttonPin = 7;
 int currentLed = 0;
 
 // =========================
-// Debounce button
+// Debounce button (Active-HIGH: ditekan = HIGH, lepas = LOW)
 // =========================
 
-int lastButtonReading = HIGH;
-int stableButtonState = HIGH;
+int lastButtonReading = LOW;
+int stableButtonState = LOW;
 
 unsigned long lastDebounceTime = 0;
 const unsigned long debounceDelay = 50;
@@ -88,8 +92,12 @@ void setup()
     digitalWrite(ledPins[i], HIGH);
   }
 
-  // Button menggunakan internal pull-up resistor
-  pinMode(buttonPin, INPUT_PULLUP);
+  // Button menggunakan konfigurasi active-high
+  pinMode(buttonPin, INPUT);
+
+  // Inisialisasi pembacaan awal agar tidak memicu false trigger saat booting
+  stableButtonState = digitalRead(buttonPin);
+  lastButtonReading = stableButtonState;
 
   Serial.begin(9600);
 
@@ -138,8 +146,8 @@ void loop()
     {
       stableButtonState = reading;
 
-      // Tombol ditekan
-      if (stableButtonState == LOW)
+      // Tombol ditekan (Active-HIGH: diklik = HIGH)
+      if (stableButtonState == HIGH)
       {
         currentLed++;
 
