@@ -1,5 +1,6 @@
 /*
   Program 4 LED Dasar Kelap-Kelip per 1 Detik
+  Program ini dibuat oleh ImNotDanish05
 */
 
 void setup()
