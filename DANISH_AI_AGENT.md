@@ -33,14 +33,13 @@ Coursework repository for Robotics Simulation (Simulasi Robotika TI-3A), contain
 
 ## Known gotchas
 - Arduino Uno pins 12 & 13 do NOT support hardware PWM; software PWM via `micros()` is required (see Bab-01 Program 09).
-- `controller_robot_sensor_4.c` implements pure straight driving (`MAX_SPEED, MAX_SPEED`) without curving, discrete ps2 alignment, and right turns when the wall ends.
+- `controller_robot_sensor_4.c` uses continuous reactive right-wall following with arc cornering (`MAX_SPEED, 0.25 * MAX_SPEED`).
 
 ## Changelog (newest first, 1 line per entry, NOT a diff)
-- 2026-10-09: Implemented pure straight driving (no curving), discrete ps2 corrections, and right turn when wall ends in controller_robot_sensor_4.c.
-- 2026-10-09: Overhauled controller_robot_sensor_4 with full-speed straight driving and deadband straightening.
-- 2026-10-09: Implemented sensor-driven wall following and corner turning in controller_robot_sensor_4.c.
+- 2026-10-09: Reverted controller_robot_sensor_4.c back to smooth reactive wall follower with arc cornering.
+- 2026-10-09: Implemented smooth reactive right-wall follower in controller_robot_sensor_4.c.
+- 2026-10-09: Fixed syntax error (dangling ||) and variable names (psX_val) in controller_robot_sensor_4.c.
 - 2026-10-09: Updated controller_robot_sensor_3 with right-side sensor ps2 and left-turn avoidance logic.
 - 2026-10-09: Added obstacle stop logic (OBSTACLE_THRESHOLD 80.0) in controller_robot_sensor.c.
-- 2026-10-09: Declared and enabled distance sensors ps0 & ps7 in controller_robot_sensor.c.
 - 2026-10-09: Initialized DANISH_AI_AGENT.md context after repository-wide scan.
 

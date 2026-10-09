@@ -9,8 +9,8 @@ EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/project
 WorldInfo {
 }
 Viewpoint {
-  orientation -0.22752805199627418 -0.9488705190893206 0.21880521830601696 4.980575127798885
-  position -0.7158731055848144 0.25823967454493596 2.174119947671345
+  orientation -0.0344011591929616 -0.9988765007267917 -0.03259289097303751 4.708433210609806
+  position -0.1251685852500748 -0.027959653029918152 2.7046637641566678
 }
 TexturedBackground {
 }
@@ -28,11 +28,11 @@ E-puck {
   controller "controller_robot_sensor_4"
 }
 Solid {
-  translation -0.13 0.25 0
+  translation -0.13 0.28 0
   children [
     Shape {
       geometry TexturedBox {
-        size 1 0.25 0.2
+        size 1 0.2 0.2
       }
     }
   ]
