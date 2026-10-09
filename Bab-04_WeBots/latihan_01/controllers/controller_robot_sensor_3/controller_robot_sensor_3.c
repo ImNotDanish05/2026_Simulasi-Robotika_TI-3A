@@ -1,5 +1,5 @@
 /*
- * File:          controller_robot_sensor_2.c
+ * File:          controller_robot_sensor_3.c
  * Date:
  * Description:
  * Author:
@@ -71,7 +71,7 @@ int main(int argc, char **argv) {
   WbDeviceTag kanan_actuator = wb_robot_get_device("right wheel motor");
   WbDeviceTag kiri_actuator = wb_robot_get_device("left wheel motor");
 
-  /* Inisialisasi sensor jarak ps0 (depan kanan), ps2 (depan tengah), dan ps7 (depan kiri) */
+  /* Inisialisasi sensor jarak ps0 (depan kanan), ps2 (samping kanan), dan ps7 (depan kiri) */
   WbDeviceTag ps0 = wb_robot_get_device("ps0");
   WbDeviceTag ps2 = wb_robot_get_device("ps2");
   WbDeviceTag ps7 = wb_robot_get_device("ps7");
@@ -103,26 +103,24 @@ int main(int argc, char **argv) {
     /*
      * 2. Process sensor data:
      * Nilai sensor E-puck semakin besar saat mendekati objek.
-     * Jika ps0, ps2, atau ps7 > OBSTACLE_THRESHOLD, berarti ada tembok di depan.
+     * Jika sensor depan (ps0, ps7) atau sensor sebelah kanan (ps2) > OBSTACLE_THRESHOLD,
+     * robot mendeteksi halangan dan akan belok ke kiri untuk menghindar.
      */
-    bool dekat_tembok = (ps0_value > OBSTACLE_THRESHOLD) || (ps7_value > OBSTACLE_THRESHOLD);
-    bool dekat_tembok_kanan = (ps2_value > OBSTACLE_THRESHOLD);
+    bool halangan_terdeteksi = (ps0_value > OBSTACLE_THRESHOLD) ||
+                               (ps7_value > OBSTACLE_THRESHOLD) ||
+                               (ps2_value > OBSTACLE_THRESHOLD);
 
     /*
      * 3. Send actuator commands:
      */
-    if (dekat_tembok) {
-      // Belok kiri
-      if (dekat_tembok_kanan) {
-        // Jika ada tembok di kanan, belok ke kiri
-        set_speeds(kiri_actuator, kanan_actuator, -SPEED_TURN, SPEED_TURN);
-      } else {
-        // Jika tidak ada tembok di kanan, belok ke kiri
-        set_speeds(kiri_actuator, kanan_actuator, 0, 0);
-      }
+    if (halangan_terdeteksi) {
+      printf("[Sensor] Halangan terdeteksi (ps0: %.1f, ps2_kanan: %.1f, ps7: %.1f) -> Belok Kiri\n",
+             ps0_value, ps2_value, ps7_value);
+      // Belok kiri (roda kiri mundur, roda kanan maju)
+      set_speeds(kiri_actuator, kanan_actuator, -SPEED_TURN, SPEED_TURN);
       if (!wait_seconds(TURN_LEFT_DURATION)) break;
     } else {
-      /* Tidak ada tembok di depan: Maju */
+      /* Tidak ada halangan: Maju lurus */
       wb_motor_set_velocity(kanan_actuator, SPEED_FORWARD);
       wb_motor_set_velocity(kiri_actuator, SPEED_FORWARD);
     }

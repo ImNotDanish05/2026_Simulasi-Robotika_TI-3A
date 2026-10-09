@@ -33,9 +33,10 @@ Coursework repository for Robotics Simulation (Simulasi Robotika TI-3A), contain
 
 ## Known gotchas
 - Arduino Uno pins 12 & 13 do NOT support hardware PWM; software PWM via `micros()` is required (see Bab-01 Program 09).
-- `controller_robot_sensor.c` implements obstacle stop logic (stops if `ps0`/`ps7` > 80.0, else moves forward at 0.5 * MAX_SPEED).
+- `controller_robot_sensor.c` stops near walls; `controller_robot_sensor_3.c` avoids obstacles by turning left when front (ps0, ps7) or right-side (ps2) detects walls.
 
 ## Changelog (newest first, 1 line per entry, NOT a diff)
+- 2026-10-09: Updated controller_robot_sensor_3 with right-side sensor ps2 and left-turn avoidance logic.
 - 2026-10-09: Added obstacle stop logic (OBSTACLE_THRESHOLD 80.0) in controller_robot_sensor.c.
 - 2026-10-09: Declared and enabled distance sensors ps0 & ps7 in controller_robot_sensor.c.
 - 2026-10-09: Initialized DANISH_AI_AGENT.md context after repository-wide scan.
