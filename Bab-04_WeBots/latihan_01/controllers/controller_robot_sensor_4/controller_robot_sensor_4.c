@@ -1,135 +1,158 @@
 /*
  * File:          controller_robot_sensor_4.c
- * Date:
- * Description:
- * Author:
- * Modifications:
+ * Description:   Controller Robot Sensor 4:
+ *                - Mode Default: LURUS BLAS (MAX_SPEED, MAX_SPEED), kedua motor sama persis tanpa ngelengkung.
+ *                - Koreksi Posisi:
+ *                  * Jika ps2 terlalu dekat tembok kanan (> 165) -> serong kiri sebentar sampai aman, lalu LURUS BLAS.
+ *                  * Jika ps2 terlalu jauh dari tembok kanan (< 68) -> serong kanan mendekat tembok sampai pas, lalu LURUS BLAS.
+ *                - Belok Kanan: Jika tembok kanan sudah habis (ps2 < 45) -> belok kanan mengitari sudut.
+ *                - Belok Kiri: Jika ada tembok di depan (ps0 / ps7 > 90) -> belok kiri menghindar.
  */
 
-/*
- * You may need to add include files like <webots/distance_sensor.h> or
- * <webots/motor.h>, etc.
- */
 #include <webots/robot.h>
 #include <webots/motor.h>
 #include <webots/distance_sensor.h>
 #include <stdio.h>
 #include <stdbool.h>
 
-/*
- * You may want to add macros here.
- */
 #define TIME_STEP 64
 #define MAX_SPEED 6.28
-#define OBSTACLE_THRESHOLD 80.0 // Nilai sensor jarak saat mendekati tembok (standar Webots E-puck)
-
-#define SPEED_TURN (0.5 * MAX_SPEED)
-#define SPEED_FORWARD (MAX_SPEED)
-
-// Durasi belok kiri dalam detik untuk putaran ~90 derajat
-// (Perhitungan: 2.0 detik menghasilkan 225 derajat, maka 90/225 * 2.0 = 0.8 detik)
-#define TURN_LEFT_DURATION 0.71
 
 /*
- * Fungsi pembantu untuk mengatur kecepatan motor kiri dan kanan
+ * Status / Mode Robot
+ */
+typedef enum {
+  MODE_LURUS,          // LURUS BLAS (kiri = MAX_SPEED, kanan = MAX_SPEED)
+  MODE_KOREKSI_KIRI,   // Terlalu nempel tembok kanan -> geser kiri sebentar
+  MODE_KOREKSI_KANAN,  // Terlalu jauh dari tembok kanan -> geser kanan mendekat
+  MODE_BELOK_KANAN,    // Tembok kanan habis -> belok kanan masuk lorong baru
+  MODE_BELOK_KIRI      // Tembok di depan mentok -> belok kiri menghindar
+} ModeRobot;
+
+/*
+ * Fungsi pembantu mengatur kecepatan kedua motor
  */
 void set_speeds(WbDeviceTag left_motor, WbDeviceTag right_motor, double left_speed, double right_speed) {
   wb_motor_set_velocity(left_motor, left_speed);
   wb_motor_set_velocity(right_motor, right_speed);
 }
 
-/*
- * Fungsi pembantu untuk menunggu selama sejumlah detik (dalam waktu simulasi Webots).
- * Mengembalikan false jika simulasi dihentikan/selesai oleh pengguna.
- */
-bool wait_seconds(double duration) {
-  double start_time = wb_robot_get_time();
-  while (wb_robot_get_time() - start_time < duration) {
-    if (wb_robot_step(TIME_STEP) == -1) {
-      return false; // Simulasi selesai atau jendela ditutup
-    }
-  }
-  return true;
-}
-
-
-/*
- * This is the main program.
- * The arguments of the main function can be specified by the
- * "controllerArgs" field of the Robot node
- */
 int main(int argc, char **argv) {
-  /* necessary to initialize webots stuff */
   wb_robot_init();
 
-  /*
-   * You should declare here WbDeviceTag variables for storing
-   * robot devices like this:
-   *  WbDeviceTag my_sensor = wb_robot_get_device("my_sensor");
-   *  WbDeviceTag my_actuator = wb_robot_get_device("my_actuator");
-   */
+  /* Device motor roda E-puck */
   WbDeviceTag kanan_actuator = wb_robot_get_device("right wheel motor");
   WbDeviceTag kiri_actuator = wb_robot_get_device("left wheel motor");
 
-  /* Inisialisasi sensor jarak ps0 (depan kanan), ps2 (samping kanan), dan ps7 (depan kiri) */
-  WbDeviceTag ps0 = wb_robot_get_device("ps0");
-  WbDeviceTag ps2 = wb_robot_get_device("ps2");
-  WbDeviceTag ps7 = wb_robot_get_device("ps7");
+  /* Device sensor jarak */
+  WbDeviceTag ps0 = wb_robot_get_device("ps0"); // Depan kanan
+  WbDeviceTag ps2 = wb_robot_get_device("ps2"); // Samping kanan (90°)
+  WbDeviceTag ps7 = wb_robot_get_device("ps7"); // Depan kiri
 
-  /* Aktifkan sensor jarak dengan sampling period TIME_STEP */
+  /* Aktifkan sensor jarak */
   wb_distance_sensor_enable(ps0, TIME_STEP);
   wb_distance_sensor_enable(ps2, TIME_STEP);
   wb_distance_sensor_enable(ps7, TIME_STEP);
 
+  /* Mode kontrol kecepatan */
   wb_motor_set_position(kanan_actuator, INFINITY);
   wb_motor_set_position(kiri_actuator, INFINITY);
 
-  /* Awal mulai: robot diam */
-  wb_motor_set_velocity(kanan_actuator, 0.0);
-  wb_motor_set_velocity(kiri_actuator, 0.0);
+  set_speeds(kiri_actuator, kanan_actuator, 0.0, 0.0);
 
-  /* main loop
-   * Perform simulation steps of TIME_STEP milliseconds
-   * and leave the loop when the simulation is over
-   */
+  ModeRobot mode = MODE_LURUS;
+  bool pernah_lihat_tembok_kanan = false;
+
+  printf("[Controller] Controller 4 Siap: LURUS BLAS!\n");
+
+  /* Simulation loop */
   while (wb_robot_step(TIME_STEP) != -1) {
-    /*
-     * 1. Read the sensors :
-     */
-    double ps0_value = wb_distance_sensor_get_value(ps0);
-    double ps2_value = wb_distance_sensor_get_value(ps2);
-    double ps7_value = wb_distance_sensor_get_value(ps7);
+    /* Baca nilai sensor */
+    double ps0_val = wb_distance_sensor_get_value(ps0);
+    double ps2_val = wb_distance_sensor_get_value(ps2);
+    double ps7_val = wb_distance_sensor_get_value(ps7);
 
-    /*
-     * 2. Process sensor data:
-     * Nilai sensor E-puck semakin besar saat mendekati objek.
-     * Jika sensor depan (ps0, ps7) atau sensor sebelah kanan (ps2) > OBSTACLE_THRESHOLD,
-     * robot mendeteksi halangan dan akan belok ke kiri untuk menghindar.
-     */
-    bool halangan_terdeteksi = (ps0_value > OBSTACLE_THRESHOLD) ||
-                               (ps7_value > OBSTACLE_THRESHOLD) ||
-                               (ps2_value > OBSTACLE_THRESHOLD);
-
-    /*
-     * 3. Send actuator commands:
-     */
-    if (halangan_terdeteksi) {
-      printf("[Sensor] Halangan terdeteksi (ps0: %.1f, ps2_kanan: %.1f, ps7: %.1f) -> Belok Kiri\n",
-             ps0_value, ps2_value, ps7_value);
-      // Belok kiri (roda kiri mundur, roda kanan maju)
-      set_speeds(kiri_actuator, kanan_actuator, -SPEED_TURN, SPEED_TURN);
-      if (!wait_seconds(TURN_LEFT_DURATION)) break;
-    } else {
-      /* Tidak ada halangan: Maju lurus */
-      wb_motor_set_velocity(kanan_actuator, SPEED_FORWARD);
-      wb_motor_set_velocity(kiri_actuator, SPEED_FORWARD);
+    // Tandai jika robot sudah pernah berada di samping tembok kanan
+    if (ps2_val > 55.0) {
+      pernah_lihat_tembok_kanan = true;
     }
-  };
 
-  /* Enter your cleanup code here */
+    /* -------------------------------------------------------------
+     * 1. CEK PRIORITAS UTAMA (TEMBOK DEPAN / TEMBOK KANAN HABIS)
+     * ------------------------------------------------------------- */
+    if (ps0_val > 90.0 || ps7_val > 90.0) {
+      mode = MODE_BELOK_KIRI;
+    } 
+    else if (pernah_lihat_tembok_kanan && ps2_val < 45.0 && mode != MODE_BELOK_KIRI) {
+      // Tembok kanan sudah habis -> Belok kanan
+      mode = MODE_BELOK_KANAN;
+    }
 
-  /* This is necessary to cleanup webots resources */
+    /* -------------------------------------------------------------
+     * 2. EKSEKUSI BERDASARKAN MODE
+     * ------------------------------------------------------------- */
+    switch (mode) {
+      /* --- KASUS A: BELOK KIRI (Mentok di depan) --- */
+      case MODE_BELOK_KIRI:
+        set_speeds(kiri_actuator, kanan_actuator, -0.4 * MAX_SPEED, 0.4 * MAX_SPEED);
+        if (ps0_val < 65.0 && ps7_val < 65.0) {
+          printf("[Mode] Tembok depan bebas -> Gaspol LURUS BLAS!\n");
+          mode = MODE_LURUS;
+        }
+        break;
+
+      /* --- KASUS B: BELOK KANAN (Tembok kanan habis) --- */
+      case MODE_BELOK_KANAN:
+        // Belok kanan mengitari sudut (roda kiri laju, roda kanan lambat)
+        set_speeds(kiri_actuator, kanan_actuator, MAX_SPEED, 0.15 * MAX_SPEED);
+        // Selesai belok kanan saat ps2 kembali menangkap tembok baru di kanan
+        if (ps2_val >= 70.0) {
+          printf("[Mode] Tembok baru terdeteksi di kanan (ps2: %.1f) -> Gaspol LURUS BLAS!\n", ps2_val);
+          mode = MODE_LURUS;
+        }
+        break;
+
+      /* --- KASUS C: KOREKSI KIRI (Terlalu mepet tembok kanan) --- */
+      case MODE_KOREKSI_KIRI:
+        // Serong kiri sebentar untuk menjauh
+        set_speeds(kiri_actuator, kanan_actuator, 0.6 * MAX_SPEED, MAX_SPEED);
+        if (ps2_val <= 130.0) {
+          printf("[Koreksi Selesai] Jarak aman (ps2: %.1f) -> Kembali LURUS BLAS!\n", ps2_val);
+          mode = MODE_LURUS;
+        }
+        break;
+
+      /* --- KASUS D: KOREKSI KANAN (Terlalu jauh dari tembok kanan) --- */
+      case MODE_KOREKSI_KANAN:
+        // Serong kanan sebentar untuk mendekat
+        set_speeds(kiri_actuator, kanan_actuator, MAX_SPEED, 0.6 * MAX_SPEED);
+        if (ps2_val >= 85.0) {
+          printf("[Koreksi Selesai] Sudah pas (ps2: %.1f) -> Kembali LURUS BLAS!\n", ps2_val);
+          mode = MODE_LURUS;
+        }
+        break;
+
+      /* --- KASUS E: MODE LURUS (LURUS BLAS, NO BELOK-BELOK, NO NGELENGKUNG) --- */
+      case MODE_LURUS:
+      default:
+        if (ps2_val > 165.0) {
+          // Terlalu mepet ke tembok kanan -> Masuk mode koreksi kiri
+          printf("[Koreksi] Mepet kanan (ps2: %.1f) -> Serong kiri sebentar...\n", ps2_val);
+          mode = MODE_KOREKSI_KIRI;
+        } 
+        else if (pernah_lihat_tembok_kanan && ps2_val < 68.0 && ps2_val >= 45.0) {
+          // Terlalu jauh dari tembok kanan -> Masuk mode koreksi kanan
+          printf("[Koreksi] Terlalu jauh (ps2: %.1f) -> Serong kanan mendekat...\n", ps2_val);
+          mode = MODE_KOREKSI_KANAN;
+        } 
+        else {
+          // 100% LURUS BLAS! Kedua roda kecepatannya SAMA PERSIS!
+          set_speeds(kiri_actuator, kanan_actuator, MAX_SPEED, MAX_SPEED);
+        }
+        break;
+    }
+  }
+
   wb_robot_cleanup();
-
   return 0;
 }
