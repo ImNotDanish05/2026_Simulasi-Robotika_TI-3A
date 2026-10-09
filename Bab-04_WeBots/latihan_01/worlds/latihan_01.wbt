@@ -4,12 +4,13 @@ EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/project
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/floors/protos/RectangleArena.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/robots/gctronic/e-puck/protos/E-puck.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/geometries/protos/TexturedBox.proto"
 
 WorldInfo {
 }
 Viewpoint {
-  orientation 0.0042132482773909056 0.5407772162912828 0.8411553072288163 0.6929330392537696
-  position -0.7084736234076962 -0.3545310030137401 0.35305149010050474
+  orientation -0.05927250469675335 0.07756305110613479 0.9952239663965496 1.5429753420362018
+  position 0.4908705136782106 -1.527241640793097 0.3353198099419806
 }
 TexturedBackground {
 }
@@ -19,9 +20,27 @@ RectangleArena {
   floorSize 3 3
 }
 E-puck {
-  hidden linearVelocity_0 0.027164220887377376 0.0003750309970381162 -1.109995603580974e-09
-  hidden angularVelocity_0 0.00015291996814690984 -0.011097151609559614 0.002640245550718712
-  hidden rotation_1 0 1 0 1.8426659022705034
-  hidden rotation_2 0 1 0 1.8803612410857489
-  controller "my_robot_controller_move_testing"
+  hidden position_0_0 90.25444336576322
+  hidden position_0_1 90.25444336577868
+  hidden linearVelocity_0 4.104521000869698e-05 -7.155437634826714e-14 -1.5526945465650582e-08
+  hidden angularVelocity_0 5.226879020322578e-12 0.0027364120355392574 2.360504825319057e-11
+  hidden rotation_1 0 1 0 4.132514967519515
+  hidden linearVelocity_1 5.472774818143031e-05 -5.3386449757535714e-14 1.887725531446666e-11
+  hidden angularVelocity_1 4.918565229340852e-12 0.0027364120150512247 -1.3008738213872792e-10
+  hidden rotation_2 0 1 0 4.170210306350222
+  hidden linearVelocity_2 5.472774839761733e-05 -1.422659983799524e-13 1.839550733962642e-11
+  hidden angularVelocity_2 4.932000016900438e-12 0.0027364120150597812 1.7729616206078805e-10
+  translation 0.3802685566720795 -8.230159596652022e-10 -6.394579337726768e-05
+  rotation -1.00901073857678e-06 -0.9999999999988993 1.0877330070617832e-06 0.0012900882765997017
+  controller "controller_robot_sensor"
+}
+Solid {
+  translation 0.73 0 0
+  children [
+    Shape {
+      geometry TexturedBox {
+        size 0.2 0.2 0.2
+      }
+    }
+  ]
 }

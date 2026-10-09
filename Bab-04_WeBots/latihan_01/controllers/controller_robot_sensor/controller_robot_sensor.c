@@ -11,11 +11,17 @@
  * <webots/motor.h>, etc.
  */
 #include <webots/robot.h>
+#include <webots/motor.h>
+#include <webots/distance_sensor.h>
+#include <stdio.h>
+#include <stdbool.h>
 
 /*
  * You may want to add macros here.
  */
 #define TIME_STEP 64
+#define MAX_SPEED 6.28
+#define OBSTACLE_THRESHOLD 80.0 // Nilai sensor jarak saat mendekati tembok (standar Webots E-puck)
 
 /*
  * This is the main program.
@@ -35,11 +41,20 @@ int main(int argc, char **argv) {
   WbDeviceTag kanan_actuator = wb_robot_get_device("right wheel motor");
   WbDeviceTag kiri_actuator = wb_robot_get_device("left wheel motor");
 
+  /* Inisialisasi sensor jarak ps0 (depan kanan) dan ps7 (depan kiri) */
+  WbDeviceTag ps0 = wb_robot_get_device("ps0");
+  WbDeviceTag ps7 = wb_robot_get_device("ps7");
+
+  /* Aktifkan sensor jarak dengan sampling period TIME_STEP */
+  wb_distance_sensor_enable(ps0, TIME_STEP);
+  wb_distance_sensor_enable(ps7, TIME_STEP);
+
   wb_motor_set_position(kanan_actuator, INFINITY);
   wb_motor_set_position(kiri_actuator, INFINITY);
 
-  wb_motor_set_velocity(kanan_actuator, MAX_SPEED);
-  wb_motor_set_velocity(kiri_actuator, MAX_SPEED);
+  /* Awal mulai: robot diam */
+  wb_motor_set_velocity(kanan_actuator, 0.0);
+  wb_motor_set_velocity(kiri_actuator, 0.0);
 
   /* main loop
    * Perform simulation steps of TIME_STEP milliseconds
@@ -47,17 +62,30 @@ int main(int argc, char **argv) {
    */
   while (wb_robot_step(TIME_STEP) != -1) {
     /*
-     * Read the sensors :
-     * Enter here functions to read sensor data, like:
-     *  double val = wb_distance_sensor_get_value(my_sensor);
+     * 1. Read the sensors :
      */
-
-    /* Process sensor data here */
+    double ps0_value = wb_distance_sensor_get_value(ps0);
+    double ps7_value = wb_distance_sensor_get_value(ps7);
 
     /*
-     * Enter here functions to send actuator commands, like:
-     * wb_motor_set_position(my_actuator, 10.0);
+     * 2. Process sensor data:
+     * Nilai sensor E-puck semakin besar saat mendekati objek.
+     * Jika ps0 atau ps7 > OBSTACLE_THRESHOLD, berarti ada tembok di depan.
      */
+    bool dekat_tembok = (ps0_value > OBSTACLE_THRESHOLD) || (ps7_value > OBSTACLE_THRESHOLD);
+
+    /*
+     * 3. Send actuator commands:
+     */
+    if (dekat_tembok) {
+      /* Dekat dengan tembok: Berhenti */
+      wb_motor_set_velocity(kanan_actuator, 0.0);
+      wb_motor_set_velocity(kiri_actuator, 0.0);
+    } else {
+      /* Tidak ada tembok di depan: Maju */
+      wb_motor_set_velocity(kanan_actuator, 0.5 * MAX_SPEED);
+      wb_motor_set_velocity(kiri_actuator, 0.5 * MAX_SPEED);
+    }
   };
 
   /* Enter your cleanup code here */

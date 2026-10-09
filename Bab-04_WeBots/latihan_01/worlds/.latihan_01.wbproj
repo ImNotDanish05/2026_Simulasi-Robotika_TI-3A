@@ -5,6 +5,7 @@ sceneTreePerspectives: 000000ff00000001000000030000001c000000c0000000fa010000000
 maximizedDockId: -1
 centralWidgetVisible: 1
 orthographicViewHeight: 1
-textFiles: 3 "controllers/my_robot_controller/my_robot_controller.c" "controllers/my_robot_controller_move_testing/my_robot_controller_move_testing.c" "controllers/controller_robot_sensor/controller_robot_sensor.c" ""
+textFiles: 2 "controllers/my_robot_controller/my_robot_controller.c" "controllers/my_robot_controller_move_testing/my_robot_controller_move_testing.c" "controllers/controller_robot_sensor/controller_robot_sensor.c"
+robotWindow: e-puck
 consoles: Console:All:All
 renderingDevicePerspectives: e-puck:camera;1;2.12821;0;0
