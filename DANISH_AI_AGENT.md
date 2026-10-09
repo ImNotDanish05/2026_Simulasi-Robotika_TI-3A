@@ -33,13 +33,12 @@ Coursework repository for Robotics Simulation (Simulasi Robotika TI-3A), contain
 
 ## Known gotchas
 - Arduino Uno pins 12 & 13 do NOT support hardware PWM; software PWM via `micros()` is required (see Bab-01 Program 09).
-- `controller_robot_sensor_4.c` uses continuous reactive right-wall following with arc cornering (`MAX_SPEED, 0.25 * MAX_SPEED`).
+- `controller_robot_sensor_4.c` uses a 3-rule reactive right-wall follower integrated with E-puck camera red color detection to stop upon reaching the goal.
 
 ## Changelog (newest first, 1 line per entry, NOT a diff)
-- 2026-10-09: Reverted controller_robot_sensor_4.c back to smooth reactive wall follower with arc cornering.
-- 2026-10-09: Implemented smooth reactive right-wall follower in controller_robot_sensor_4.c.
-- 2026-10-09: Fixed syntax error (dangling ||) and variable names (psX_val) in controller_robot_sensor_4.c.
-- 2026-10-09: Updated controller_robot_sensor_3 with right-side sensor ps2 and left-turn avoidance logic.
+- 2026-10-09: Made floor red detection strict (r>140, g<65, b<65, r-g>80) to reject brown wood tiles in controller_robot_sensor_4.c.
+- 2026-10-09: Focused camera red detection to lower half in controller_robot_sensor_4.c.
+- 2026-10-09: Verified working elegant 3-rule right-wall follower in controller_robot_sensor_4.c.
 - 2026-10-09: Added obstacle stop logic (OBSTACLE_THRESHOLD 80.0) in controller_robot_sensor.c.
 - 2026-10-09: Initialized DANISH_AI_AGENT.md context after repository-wide scan.
 

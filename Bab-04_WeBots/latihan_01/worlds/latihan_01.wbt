@@ -5,12 +5,14 @@ EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/project
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/floors/protos/RectangleArena.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/robots/gctronic/e-puck/protos/E-puck.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/geometries/protos/TexturedBox.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/apartment_structure/protos/Wall.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/appearances/protos/Roughcast.proto"
 
 WorldInfo {
 }
 Viewpoint {
-  orientation -0.0344011591929616 -0.9988765007267917 -0.03259289097303751 4.708433210609806
-  position -0.1251685852500748 -0.027959653029918152 2.7046637641566678
+  orientation 0.05550274518287947 -0.9548839922813923 -0.2917464765201363 5.355602489457602
+  position -1.9235184828384382 -0.4241617107257142 2.5828215947254107
 }
 TexturedBackground {
 }
@@ -48,4 +50,14 @@ Solid {
     }
   ]
   name "solid(2)"
+}
+Wall {
+  translation -0.5 -0.5 -0.00999
+  size 0.2 0.2 0.01
+  appearance Roughcast {
+    colorOverride 1 0 0
+    textureTransform TextureTransform {
+      scale 2.4 1
+    }
+  }
 }
