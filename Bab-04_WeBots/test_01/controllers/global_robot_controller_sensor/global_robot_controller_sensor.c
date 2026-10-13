@@ -78,7 +78,7 @@
 
 typedef enum { SIDE_NONE, SIDE_LEFT, SIDE_RIGHT } Side;
 typedef struct { double x, y; Side side; } Crumb; /* side = tembok tumpuan saat remah ini direkam */
-typedef enum { EXPLORE, RETURN_UTURN, RETURN_HOME, DONE } State;
+typedef enum { EXPLORE, RETURN_UTURN, RETURN_HOME, RETURN_ENTER_ROOM, DONE } State;
 typedef enum { M_OPEN, M_TURN, M_FOLLOW, M_LOST_FWD, M_LOST_ARC } Mode;
 
 static Crumb path[MAX_PATH];
@@ -189,6 +189,7 @@ int main(int argc, char **argv) {
   int uturn_dir = 1; /* 1 = kanan, -1 = kiri */
   Side return_side = SIDE_LEFT;
   int return_steps = 0;
+  int enter_room_steps = 0;
 
   path_record(0.0, 0.0, SIDE_NONE);
   mark_visited(0.0, 0.0);
@@ -294,22 +295,39 @@ int main(int argc, char **argv) {
       return_steps++;
       double dist_start = hypot(x, y);
 
-      /* Setelah berjalan minimal 120 step (~8 detik) dan mendekati titik asal (< 22 cm) */
+      /* Saat robot mendekati pintu masuk ruangan start (< 22 cm) */
       if (return_steps > 120 && dist_start < 0.22) {
-        state = DONE;
-        set_speeds(left_motor, right_motor, 0.0, 0.0);
-        printf("[SELESAI] Robot kembali ke posisi start (d=%.2f m, step=%d)! Berhenti sempurna.\n",
-               dist_start, return_steps);
-        continue;
+        state = RETURN_ENTER_ROOM;
+        enter_room_steps = 0;
+        printf("[PINTU MASUK] Terdeteksi di pintu masuk (d=%.2f m). Melanjutkan masuk ke dalam ruangan...\n", dist_start);
       }
       /* Mengalir ke FSM penelusur dinding (section 5, 6, 7) */
+
+    } else if (state == RETURN_ENTER_ROOM) {
+      /* ===== 3c. Masuk sepenuhnya ke dalam ruangan start ===== */
+      enter_room_steps++;
+      double dist_start = hypot(x, y);
+      double front_max = fmax(v[0], v[7]);
+
+      /* Berhenti jika sudah berada di dalam ruangan:
+         1. Jarak ke titik asal sangat dekat (d < 0.08 m)
+         2. Atau sudah maju cukup dalam melewati kusen pintu (enter_room_steps >= 40 atau ~25 cm)
+         3. Atau sensor depan mendeteksi dinding ruangan (front_max > 250.0) */
+      if (dist_start < 0.08 || enter_room_steps >= 40 || front_max > 250.0) {
+        state = DONE;
+        set_speeds(left_motor, right_motor, 0.0, 0.0);
+        printf("[SELESAI] Robot SUDAH MASUK SEPENUHNYA ke dalam ruangan start (d=%.2f m, step_masuk=%d)! Berhenti sempurna.\n",
+               dist_start, enter_room_steps);
+        continue;
+      }
+      /* Mengalir ke FSM penelusur dinding agar bodi tetap aman dari benturan */
 
     } else if (state == DONE) {
       set_speeds(left_motor, right_motor, 0.0, 0.0);
       continue;
     }
 
-    if (state == EXPLORE || state == RETURN_HOME) {
+    if (state == EXPLORE || state == RETURN_HOME || state == RETURN_ENTER_ROOM) {
       /* ===== 5. Deteksi tembok ===== */
       double front_thr = (mode == M_LOST_ARC) ? FRONT_ARC_DETECT : WALL_DETECT;
       bool front = (v[0] > front_thr || v[7] > front_thr);
