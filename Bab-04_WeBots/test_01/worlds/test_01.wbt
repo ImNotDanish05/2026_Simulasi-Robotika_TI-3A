@@ -14,8 +14,8 @@ WorldInfo {
   basicTimeStep 16
 }
 Viewpoint {
-  orientation 0.28 0.24 -0.93 4.88
-  position -0.15 -2.1 2.4
+  orientation -0.5597991731700201 0.5902960329628045 0.5815285712555638 2.1423315778832452
+  position 0.07262864029913874 0.010194351045181654 3.4606798968278993
 }
 TexturedBackground {
 }
@@ -25,14 +25,7 @@ RectangleArena {
   floorSize 1.2 1.22
   floorTileSize 0.2 0.2
   wallThickness 0.012
-  wallHeight 0.1
 }
-
-# ========================================================
-# INTERNAL MAZE WALLS (SOLID BOXES WITH COLLISION & RAYCAST)
-# ========================================================
-
-# ROOM 1 (Tenggara / Kanan Bawah)
 Solid {
   translation 0.01 -0.3825 0.05
   children [
@@ -63,8 +56,6 @@ Solid {
   name "wall_room1_north"
   boundingObject USE WALL_R1_NORTH
 }
-
-# ROOM 2 (Barat Daya / Kiri Bawah)
 Solid {
   translation -0.42 -0.095 0.05
   children [
@@ -91,8 +82,6 @@ Solid {
   name "wall_room2_east"
   boundingObject USE WALL_R2_EAST
 }
-
-# ROOM 3 (Barat Laut / Kiri Atas)
 Solid {
   translation -0.24 0.3925 0.05
   children [
@@ -119,8 +108,6 @@ Solid {
   name "wall_room3_south"
   boundingObject USE WALL_R3_SOUTH
 }
-
-# ROOM 4 (Tengah Atas / Pulau)
 Solid {
   translation 0.195 0.38 0.05
   children [
@@ -173,10 +160,8 @@ Solid {
   name "wall_room4_south"
   boundingObject USE WALL_R4_SOUTH
 }
-
-# TARGET OBJECT (Red Target / Flame Goal di dalam Room 4)
 Solid {
-  translation 0.20 0.25 0.001
+  translation 0.2 0.25 0.001
   children [
     Shape {
       appearance PBRAppearance {
@@ -196,14 +181,10 @@ Solid {
     radius 0.03
   }
 }
-
-# ROBOT E-PUCK (Start di koridor barat antara Room 2 & Room 3 menghadap utara)
 E-puck {
   translation -0.42 0.04 0
   rotation 0 0 1 1.5708
-  name "e-puck"
   controller "<generic>"
-  camera_fieldOfView 0.84
   camera_width 64
   camera_height 64
 }
