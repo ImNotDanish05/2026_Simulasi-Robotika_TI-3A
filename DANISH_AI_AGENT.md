@@ -12,6 +12,7 @@ Coursework repository for Robotics Simulation (Simulasi Robotika TI-3A), contain
 - Build Webots controller: `make -C Bab-04_WeBots/latihan_01/controllers/<controller_dir>`
 - Clean Webots build: `make -C Bab-04_WeBots/latihan_01/controllers/<controller_dir> clean`
 - Run Webots simulation: `webots Bab-04_WeBots/latihan_01/worlds/latihan_01.wbt`
+- Run Webots UTS simulation: `webots Bab-04_WeBots/test_01/worlds/test_01.wbt`
 
 ## Structure map (top-level only, 1 line per folder)
 - `Bab-01_Pemrograman-IO/` — 4-LED patterns, push button, potentiometer, and hybrid PWM
@@ -36,6 +37,7 @@ Coursework repository for Robotics Simulation (Simulasi Robotika TI-3A), contain
 - `controller_robot_sensor_4.c` uses a 3-rule reactive right-wall follower integrated with E-puck camera red color detection to stop upon reaching the goal.
 
 ## Changelog (newest first, 1 line per entry, NOT a diff)
+- 2026-10-13: Built 1:2 scale UTS Trinity/KRPAI maze in Bab-04_WeBots/test_01/worlds/test_01.wbt with E-puck and target.
 - 2026-10-13: Documented UTS arena specs & Webots coordinate mapping in Bab-04_WeBots/catatan/arena_uts.md from arena uts.docx.
 - 2026-10-09: Made floor red detection strict (r>140, g<65, b<65, r-g>80) to reject brown wood tiles in controller_robot_sensor_4.c.
 - 2026-10-09: Focused camera red detection to lower half in controller_robot_sensor_4.c.

@@ -1,16 +1,209 @@
 #VRML_SIM R2025a utf8
+
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackground.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/floors/protos/RectangleArena.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/robots/gctronic/e-puck/protos/E-puck.proto"
+
 WorldInfo {
+  info [
+    "Arena UTS Simulasi Robotika TI-3A (Skala 1:2 Trinity College / KRPAI Maze)"
+    "Dimensi: 1.20m x 1.22m, Lebar lorong: 0.23m"
+  ]
+  title "Arena UTS Simulasi Robotika"
+  basicTimeStep 16
 }
 Viewpoint {
-  orientation -0.5773 0.5773 0.5773 2.0944
-  position 0 0 10
+  orientation 0.28 0.24 -0.93 4.88
+  position -0.15 -2.1 2.4
 }
 TexturedBackground {
 }
 TexturedBackgroundLight {
 }
 RectangleArena {
+  floorSize 1.2 1.22
+  floorTileSize 0.2 0.2
+  wallThickness 0.012
+  wallHeight 0.1
+}
+
+# ========================================================
+# INTERNAL MAZE WALLS (SOLID BOXES WITH COLLISION & RAYCAST)
+# ========================================================
+
+# ROOM 1 (Tenggara / Kanan Bawah)
+Solid {
+  translation 0.01 -0.3825 0.05
+  children [
+    DEF WALL_R1_WEST Shape {
+      appearance DEF WALL_APP PBRAppearance {
+        baseColor 0.85 0.85 0.85
+        roughness 0.5
+        metalness 0
+      }
+      geometry Box {
+        size 0.012 0.455 0.1
+      }
+    }
+  ]
+  name "wall_room1_west"
+  boundingObject USE WALL_R1_WEST
+}
+Solid {
+  translation 0.19 -0.155 0.05
+  children [
+    DEF WALL_R1_NORTH Shape {
+      appearance USE WALL_APP
+      geometry Box {
+        size 0.36 0.012 0.1
+      }
+    }
+  ]
+  name "wall_room1_north"
+  boundingObject USE WALL_R1_NORTH
+}
+
+# ROOM 2 (Barat Daya / Kiri Bawah)
+Solid {
+  translation -0.42 -0.095 0.05
+  children [
+    DEF WALL_R2_NORTH Shape {
+      appearance USE WALL_APP
+      geometry Box {
+        size 0.36 0.012 0.1
+      }
+    }
+  ]
+  name "wall_room2_north"
+  boundingObject USE WALL_R2_NORTH
+}
+Solid {
+  translation -0.24 -0.22 0.05
+  children [
+    DEF WALL_R2_EAST Shape {
+      appearance USE WALL_APP
+      geometry Box {
+        size 0.012 0.25 0.1
+      }
+    }
+  ]
+  name "wall_room2_east"
+  boundingObject USE WALL_R2_EAST
+}
+
+# ROOM 3 (Barat Laut / Kiri Atas)
+Solid {
+  translation -0.24 0.3925 0.05
+  children [
+    DEF WALL_R3_EAST Shape {
+      appearance USE WALL_APP
+      geometry Box {
+        size 0.012 0.435 0.1
+      }
+    }
+  ]
+  name "wall_room3_east"
+  boundingObject USE WALL_R3_EAST
+}
+Solid {
+  translation -0.32 0.175 0.05
+  children [
+    DEF WALL_R3_SOUTH Shape {
+      appearance USE WALL_APP
+      geometry Box {
+        size 0.16 0.012 0.1
+      }
+    }
+  ]
+  name "wall_room3_south"
+  boundingObject USE WALL_R3_SOUTH
+}
+
+# ROOM 4 (Tengah Atas / Pulau)
+Solid {
+  translation 0.195 0.38 0.05
+  children [
+    DEF WALL_R4_NORTH Shape {
+      appearance USE WALL_APP
+      geometry Box {
+        size 0.35 0.012 0.1
+      }
+    }
+  ]
+  name "wall_room4_north"
+  boundingObject USE WALL_R4_NORTH
+}
+Solid {
+  translation 0.02 0.2525 0.05
+  children [
+    DEF WALL_R4_WEST Shape {
+      appearance USE WALL_APP
+      geometry Box {
+        size 0.012 0.255 0.1
+      }
+    }
+  ]
+  name "wall_room4_west"
+  boundingObject USE WALL_R4_WEST
+}
+Solid {
+  translation 0.37 0.2525 0.05
+  children [
+    DEF WALL_R4_EAST Shape {
+      appearance USE WALL_APP
+      geometry Box {
+        size 0.012 0.255 0.1
+      }
+    }
+  ]
+  name "wall_room4_east"
+  boundingObject USE WALL_R4_EAST
+}
+Solid {
+  translation 0.31 0.125 0.05
+  children [
+    DEF WALL_R4_SOUTH Shape {
+      appearance USE WALL_APP
+      geometry Box {
+        size 0.12 0.012 0.1
+      }
+    }
+  ]
+  name "wall_room4_south"
+  boundingObject USE WALL_R4_SOUTH
+}
+
+# TARGET OBJECT (Red Target / Flame Goal di dalam Room 4)
+Solid {
+  translation 0.20 0.25 0.001
+  children [
+    Shape {
+      appearance PBRAppearance {
+        baseColor 0.9 0.05 0.05
+        roughness 0.3
+        metalness 0
+      }
+      geometry Cylinder {
+        height 0.06
+        radius 0.03
+      }
+    }
+  ]
+  name "red_target_goal"
+  boundingObject Cylinder {
+    height 0.06
+    radius 0.03
+  }
+}
+
+# ROBOT E-PUCK (Start di koridor barat antara Room 2 & Room 3 menghadap utara)
+E-puck {
+  translation -0.42 0.04 0
+  rotation 0 0 1 1.5708
+  name "e-puck"
+  controller "<generic>"
+  camera_fieldOfView 0.84
+  camera_width 64
+  camera_height 64
 }
