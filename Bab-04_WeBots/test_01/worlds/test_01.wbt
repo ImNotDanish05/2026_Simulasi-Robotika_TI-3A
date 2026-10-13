@@ -4,6 +4,8 @@ EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/project
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/floors/protos/RectangleArena.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/robots/gctronic/e-puck/protos/E-puck.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/objects/apartment_structure/protos/Wall.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/appearances/protos/Roughcast.proto"
 
 WorldInfo {
   info [
@@ -14,8 +16,8 @@ WorldInfo {
   basicTimeStep 16
 }
 Viewpoint {
-  orientation -0.5597991731700201 0.5902960329628045 0.5815285712555638 2.1423315778832452
-  position 0.07262864029913874 0.010194351045181654 3.4606798968278993
+  orientation -0.5339544030447645 0.5618746377042153 0.6318145194389457 2.0734730329351097
+  position 0.02842643813231267 -0.3491679031689501 2.632131812969899
 }
 TexturedBackground {
 }
@@ -163,15 +165,13 @@ Solid {
 Solid {
   translation 0.2 0.25 0.001
   children [
-    Shape {
-      appearance PBRAppearance {
-        baseColor 0.9 0.05 0.05
-        roughness 0.3
-        metalness 0
-      }
-      geometry Cylinder {
-        height 0.06
-        radius 0.03
+    Wall {
+      size 0.1 0.1 0.1
+      appearance Roughcast {
+        colorOverride 1 0 0
+        textureTransform TextureTransform {
+          scale 2.4 1
+        }
       }
     }
   ]
