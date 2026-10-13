@@ -17,7 +17,7 @@ Coursework repository for Robotics Simulation (Simulasi Robotika TI-3A), contain
 - `Bab-01_Pemrograman-IO/` — 4-LED patterns, push button, potentiometer, and hybrid PWM
 - `Bab-02_Servo/` — Servo motor 3-button selector and ultrasonic distance steering
 - `Bab-03_DC/` — Dual DC motor direction and PWM speed control via L293D driver
-- `Bab-04_WeBots/` — Webots R2025a simulation worlds, E-puck PROTO reference, and C controllers
+- `Bab-04_WeBots/` — Webots R2025a simulation worlds, E-puck PROTO reference, C controllers, and UTS arena specs
 
 ## Conventions that differ from defaults / can't be inferred
 - Bab 1 LEDs are Active-Low (`LOW` = ON, `HIGH` = OFF).
@@ -36,6 +36,7 @@ Coursework repository for Robotics Simulation (Simulasi Robotika TI-3A), contain
 - `controller_robot_sensor_4.c` uses a 3-rule reactive right-wall follower integrated with E-puck camera red color detection to stop upon reaching the goal.
 
 ## Changelog (newest first, 1 line per entry, NOT a diff)
+- 2026-10-13: Documented UTS arena specs & Webots coordinate mapping in Bab-04_WeBots/catatan/arena_uts.md from arena uts.docx.
 - 2026-10-09: Made floor red detection strict (r>140, g<65, b<65, r-g>80) to reject brown wood tiles in controller_robot_sensor_4.c.
 - 2026-10-09: Focused camera red detection to lower half in controller_robot_sensor_4.c.
 - 2026-10-09: Verified working elegant 3-rule right-wall follower in controller_robot_sensor_4.c.
