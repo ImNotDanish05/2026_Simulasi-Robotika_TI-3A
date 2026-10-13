@@ -1,6 +1,6 @@
 /*
- * File:          controller_robot_sensor_8.c
- * Description:   Random maze explorer v4
+ * File:          global_robot_controller_sensor.c
+ * Description:   Global maze explorer & return home controller
  *
  *  EXPLORE (pergi):
  *   OPEN      : tidak ada tembok -> lurus sampai nemu tembok
@@ -8,12 +8,15 @@
  *   LOST_FWD  : tembok tumpuan hilang -> maju sedikit biar badan lewat sudut
  *   LOST_ARC  : pivot ketat ke arah tembok sampai tembok ketemu lagi
  *   TURN      : depan buntu -> putar di tempat
- *   Tiap remah jalur dicatat sedang nempel tembok mana.
+ *   Tiap remah jalur dicatat dan loop otomatis dipangkas.
  *
- *  RETURN_HOME (pulang, setelah lihat balok merah):
- *   Robot mengikuti tembok YANG SAMA dari sisi sebaliknya (kiri tadi -> kanan sekarang),
- *   pakai mesin mode yang sama. Odometry hanya jadi penunjuk progres di jalur remah,
- *   dan dipakai untuk go-to-point di bagian jalur yang tadi melewati area kosong.
+ *  RETURN_UTURN (saat lihat balok merah):
+ *   Putar balik 180 derajat di tempat ke arah yang lebih lapang secara tuntas.
+ *
+ *  RETURN_HOME (pulang):
+ *   Dual Wall-Following simetris (Left-Wall Follower): menyusuri dinding sebaliknya
+ *   murni berbasis sensor jarak (ps0..ps7), kebal terhadap selip roda / odometri,
+ *   dan otomatis berhenti saat mendeteksi kembali area start.
  */
 
 #include <webots/robot.h>
@@ -65,9 +68,7 @@
 #define CRUMB_DIST 0.03
 #define LOOP_RADIUS 0.04
 #define LOOP_MIN_GAP 20
-#define WP_REACH 0.025
-#define RET_WINDOW 6          /* jendela remah (x3 cm) untuk cari remah terdekat saat pulang */
-#define RET_AVOID 600.0
+#define LOOKAHEAD_DIST 0.09   /* Jarak pandang ke depan (9 cm) untuk tracking jalur pulang */
 
 /* ---------- Anti-loop eksplorasi ---------- */
 #define GRID_N 160
@@ -77,7 +78,7 @@
 
 typedef enum { SIDE_NONE, SIDE_LEFT, SIDE_RIGHT } Side;
 typedef struct { double x, y; Side side; } Crumb; /* side = tembok tumpuan saat remah ini direkam */
-typedef enum { EXPLORE, RETURN_HOME, DONE } State;
+typedef enum { EXPLORE, RETURN_UTURN, RETURN_HOME, DONE } State;
 typedef enum { M_OPEN, M_TURN, M_FOLLOW, M_LOST_FWD, M_LOST_ARC } Mode;
 
 static Crumb path[MAX_PATH];
@@ -184,6 +185,10 @@ int main(int argc, char **argv) {
   int ret_idx = 0;
   int no_new_cell = 0;
   int force_straight = 0;
+  double uturn_angle = 0.0;
+  int uturn_dir = 1; /* 1 = kanan, -1 = kiri */
+  Side return_side = SIDE_LEFT;
+  int return_steps = 0;
 
   path_record(0.0, 0.0, SIDE_NONE);
   mark_visited(0.0, 0.0);
@@ -207,8 +212,6 @@ int main(int argc, char **argv) {
     for (int i = 0; i < 8; i++) v[i] = wb_distance_sensor_get_value(ps[i]);
 
     double ls = 0.0, rs = 0.0;
-    bool run_modes = (state != DONE);
-    Side want = SIDE_NONE; /* tembok yang harus diikuti saat pulang */
 
     if (state == EXPLORE) {
       /* ===== 3. Deteksi balok merah ===== */
@@ -228,20 +231,19 @@ int main(int argc, char **argv) {
       else red_frames = 0;
 
       if (red_frames >= RED_CONFIRM_FRAMES) {
-        if (dist_to(path_len - 1, x, y) > 0.005 && path_len < MAX_PATH) {
-          path[path_len].x = x;
-          path[path_len].y = y;
-          path[path_len].side = (mode == M_OPEN) ? SIDE_NONE : follow_side;
-          path_len++;
-        }
-        ret_idx = path_len - 1;
-        state = RETURN_HOME;
-        mode = M_OPEN;
-        follow_side = SIDE_NONE;
-        turn_dir = 0;
-        turn_extra = 0;
-        force_straight = 0;
-        printf("[MERAH] Ketemu! Jalur pulang: %d remah\n", path_len);
+        state = RETURN_UTURN;
+        uturn_angle = 0.0;
+        /* Dinding pulang: kebalikan dari dinding penelusuran pergi */
+        return_side = (follow_side == SIDE_RIGHT) ? SIDE_LEFT : SIDE_RIGHT;
+        if (follow_side == SIDE_NONE) return_side = SIDE_LEFT;
+
+        /* Putar menjauhi rintangan samping yang paling dekat */
+        double left_obst = v[5] + v[6];
+        double right_obst = v[2] + v[1];
+        uturn_dir = (left_obst > right_obst) ? 1 : -1; /* 1 = kanan (CW), -1 = kiri (CCW) */
+        printf("[MERAH] Target ditemukan! Memulai U-Turn untuk menyusuri dinding %s saat pulang...\n",
+               (return_side == SIDE_LEFT) ? "KIRI" : "KANAN");
+        set_speeds(left_motor, right_motor, 0.0, 0.0);
         continue;
       }
 
@@ -256,40 +258,58 @@ int main(int argc, char **argv) {
         printf("[ANTI-LOOP] Muter-muter, paksa lurus\n");
       }
 
-    } else if (state == RETURN_HOME) {
-      /* ===== 3b. Progres di jalur remah (mundur) ===== */
-      int best = ret_idx;
-      double bd = dist_to(ret_idx, x, y);
-      int lo = ret_idx - RET_WINDOW;
-      if (lo < 0) lo = 0;
-      for (int j = ret_idx - 1; j >= lo; j--) {
-        double dd = dist_to(j, x, y);
-        if (dd < bd) {
-          bd = dd;
-          best = j;
-        }
-      }
-      ret_idx = best;
-      while (ret_idx >= 0 && dist_to(ret_idx, x, y) < WP_REACH) ret_idx--;
+    } else if (state == RETURN_UTURN) {
+      /* ===== 3a. Putar balik 180 derajat di tempat secara tuntas ===== */
+      uturn_angle += fabs(dth);
 
-      if (ret_idx < 0) {
-        state = DONE;
-        run_modes = false;
-        ls = 0.0;
-        rs = 0.0;
-        printf("[SELESAI] Sudah di titik start. Berhenti.\n");
+      if (uturn_dir == 1) {
+        /* Putar ke kanan (CW): roda kiri maju, roda kanan mundur */
+        ls = TURN_SPEED;
+        rs = -TURN_SPEED;
       } else {
-        /* Tembok tadi di kiri -> sekarang di kanan, dan sebaliknya */
-        Side lab = path[ret_idx].side;
-        want = (lab == SIDE_LEFT) ? SIDE_RIGHT : ((lab == SIDE_RIGHT) ? SIDE_LEFT : SIDE_NONE);
-        if (mode != M_TURN && want != follow_side) {
-          follow_side = want;
-          mode = M_OPEN; /* ganti tumpuan -> cari lagi lewat M_OPEN */
-        }
+        /* Putar ke kiri (CCW): roda kiri mundur, roda kanan maju */
+        ls = -TURN_SPEED;
+        rs = TURN_SPEED;
       }
+
+      /* Sensor dinding pulang yang harus dideteksi */
+      double target_wall = (return_side == SIDE_LEFT) ? v[5] : v[2];
+      bool front_clear = (v[0] < FRONT_ARC_DETECT && v[7] < FRONT_ARC_DETECT);
+
+      /* Putar sampai minimal 180 derajat fisik (~3.20 rad) dan dinding pulang terdeteksi, atau batas 3.60 rad */
+      if ((uturn_angle >= 3.20 && target_wall > WALL_DETECT && front_clear) || uturn_angle >= 3.60) {
+        state = RETURN_HOME;
+        follow_side = return_side;
+        follow_first = true;
+        mode = M_FOLLOW;
+        return_steps = 0;
+        printf("[U-TURN] Selesai (%.2f rad)! Beralih ke RETURN_HOME (Dual Wall-Following dinding %s).\n",
+               uturn_angle, (follow_side == SIDE_LEFT) ? "KIRI" : "KANAN");
+      }
+      set_speeds(left_motor, right_motor, ls, rs);
+      continue;
+
+    } else if (state == RETURN_HOME) {
+      /* ===== 3b. Monitor kepulangan ke titik start ===== */
+      return_steps++;
+      double dist_start = hypot(x, y);
+
+      /* Setelah berjalan minimal 120 step (~8 detik) dan mendekati titik asal (< 22 cm) */
+      if (return_steps > 120 && dist_start < 0.22) {
+        state = DONE;
+        set_speeds(left_motor, right_motor, 0.0, 0.0);
+        printf("[SELESAI] Robot kembali ke posisi start (d=%.2f m, step=%d)! Berhenti sempurna.\n",
+               dist_start, return_steps);
+        continue;
+      }
+      /* Mengalir ke FSM penelusur dinding (section 5, 6, 7) */
+
+    } else if (state == DONE) {
+      set_speeds(left_motor, right_motor, 0.0, 0.0);
+      continue;
     }
 
-    if (run_modes) {
+    if (state == EXPLORE || state == RETURN_HOME) {
       /* ===== 5. Deteksi tembok ===== */
       double front_thr = (mode == M_LOST_ARC) ? FRONT_ARC_DETECT : WALL_DETECT;
       bool front = (v[0] > front_thr || v[7] > front_thr);
@@ -329,40 +349,18 @@ int main(int argc, char **argv) {
         }
 
         case M_OPEN: {
-          if (state == RETURN_HOME) {
-            bool wall_ok = (want == SIDE_LEFT && left_wall) || (want == SIDE_RIGHT && right_wall);
-            if (wall_ok) {
-              /* Tembok yang sama ketemu -> ikuti dari sisi sebaliknya */
-              follow_side = want;
-              follow_first = true;
-              mode = M_FOLLOW;
-              ls = CRUISE_SPEED;
-              rs = CRUISE_SPEED;
-            } else {
-              /* Bagian jalur tanpa tembok -> go-to-point pakai odometry */
-              double dx = path[ret_idx].x - x;
-              double dy = path[ret_idx].y - y;
-              double err = normalize_angle(atan2(dy, dx) - theta); /* + = target di kiri */
-
-              if (fabs(err) > 0.6) {
-                double s = (err > 0) ? TURN_SPEED : -TURN_SPEED;
-                ls = -s;
-                rs = s;
-              } else {
-                double push = 0.0;
-                if (v[5] > RET_AVOID || v[6] > RET_AVOID) push += 1.5;
-                if (v[2] > RET_AVOID || v[1] > RET_AVOID) push -= 1.5;
-                ls = RETURN_SPEED - 3.0 * err + push;
-                rs = RETURN_SPEED + 3.0 * err - push;
-              }
-            }
-          } else if (force_straight > 0) {
+          if (force_straight > 0) {
             force_straight--;
             ls = CRUISE_SPEED;
             rs = CRUISE_SPEED;
           } else if (left_wall || right_wall) {
             Side s;
-            if (left_wall && right_wall) {
+            if (state == RETURN_HOME) {
+              /* Saat pulang, prioritaskan mengunci dinding return_side */
+              s = (return_side == SIDE_LEFT && left_wall) ? SIDE_LEFT :
+                  ((return_side == SIDE_RIGHT && right_wall) ? SIDE_RIGHT :
+                  (left_wall ? SIDE_LEFT : SIDE_RIGHT));
+            } else if (left_wall && right_wall) {
               if (follow_side != SIDE_NONE) s = follow_side;
               else s = (v[5] > v[2]) ? SIDE_LEFT : SIDE_RIGHT;
             } else {

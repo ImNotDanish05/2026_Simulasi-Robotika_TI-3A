@@ -35,8 +35,10 @@ Coursework repository for Robotics Simulation (Simulasi Robotika TI-3A), contain
 ## Known gotchas
 - Arduino Uno pins 12 & 13 do NOT support hardware PWM; software PWM via `micros()` is required (see Bab-01 Program 09).
 - `controller_robot_sensor_4.c` uses a 3-rule reactive right-wall follower integrated with E-puck camera red color detection to stop upon reaching the goal.
+- `global_robot_controller_sensor.c` implements Opsi A (Dual Wall-Following Left-Wall return) to safely navigate back to start immune to wheel slip.
 
 ## Changelog (newest first, 1 line per entry, NOT a diff)
+- 2026-10-13: Implemented Opsi A (Dual Wall-Following) in global_robot_controller_sensor.c and documented 3 return strategies in catatan/rencana_solusi_return_home.md.
 - 2026-10-13: Built 1:2 scale UTS Trinity/KRPAI maze in Bab-04_WeBots/test_01/worlds/test_01.wbt with E-puck and target.
 - 2026-10-13: Documented UTS arena specs & Webots coordinate mapping in Bab-04_WeBots/catatan/arena_uts.md from arena uts.docx.
 - 2026-10-09: Made floor red detection strict (r>140, g<65, b<65, r-g>80) to reject brown wood tiles in controller_robot_sensor_4.c.
