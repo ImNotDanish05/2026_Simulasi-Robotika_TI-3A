@@ -10,7 +10,8 @@ Coursework repository for Robotics Simulation (Simulasi Robotika TI-3A), contain
 
 ## Commands
 - Build Webots controller: `make -C Bab-04_WeBots/latihan_01/controllers/<controller_dir>`
-- Clean Webots build: `make -C Bab-04_WeBots/latihan_01/controllers/<controller_dir> clean`
+- Build Webots UTS controller: `make -C Bab-04_WeBots/test_01/controllers/global_robot_controller_sensor`
+- Clean Webots build: `make -C <controller_dir> clean`
 - Run Webots simulation: `webots Bab-04_WeBots/latihan_01/worlds/latihan_01.wbt`
 - Run Webots UTS simulation: `webots Bab-04_WeBots/test_01/worlds/test_01.wbt`
 
@@ -18,7 +19,7 @@ Coursework repository for Robotics Simulation (Simulasi Robotika TI-3A), contain
 - `Bab-01_Pemrograman-IO/` — 4-LED patterns, push button, potentiometer, and hybrid PWM
 - `Bab-02_Servo/` — Servo motor 3-button selector and ultrasonic distance steering
 - `Bab-03_DC/` — Dual DC motor direction and PWM speed control via L293D driver
-- `Bab-04_WeBots/` — Webots R2025a simulation worlds, E-puck PROTO reference, C controllers, and UTS arena specs
+- `Bab-04_WeBots/` — Webots simulation: `latihan_01/` (dasar), `test_01/` (Project UTS Trinity/KRPAI 1:2), `catatan/` (spesifikasi arena & solusi)
 
 ## Conventions that differ from defaults / can't be inferred
 - Bab 1 LEDs are Active-Low (`LOW` = ON, `HIGH` = OFF).
