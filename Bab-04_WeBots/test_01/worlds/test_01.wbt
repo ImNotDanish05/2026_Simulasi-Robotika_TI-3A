@@ -184,7 +184,7 @@ Solid {
 E-puck {
   translation -0.42 0.04 0
   rotation 0 0 1 1.5708
-  controller "<generic>"
+  controller "global_robot_controller_sensor"
   camera_width 64
   camera_height 64
 }

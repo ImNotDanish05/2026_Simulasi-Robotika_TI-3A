@@ -1,13 +1,13 @@
 /*
- * File:          global_robot_controller_sensor.c
- * Description:   Random maze explorer v2
+ * File:          controller_robot_sensor_7.c
+ * Description:   Random maze explorer v3 (tanpa berhenti-nengok)
  *
  *  Mode eksplorasi:
  *   OPEN      : tidak ada tembok -> lurus sampai nemu tembok
- *   ALIGN     : berhenti & muter di tempat sampai badan robot PARALEL tembok tumpuan
- *   FOLLOW    : jalan lurus, pantau: masih lurus? mau nabrak tembok? mulai menjauh?
+ *   FOLLOW    : jalan lurus sambil pantau (jarak + arah perubahan jarak)
+ *               dekat/mau nabrak -> geser menjauh, menjauh -> geser mendekat, pas -> lurus
  *   LOST_FWD  : tembok tumpuan hilang -> maju sedikit biar badan lewat sudut
- *   LOST_ARC  : pivot ketat ke arah tembok sampai tembok ketemu lagi (belokan keluar)
+ *   LOST_ARC  : pivot ketat ke arah tembok sampai tembok ketemu lagi, lalu LANGSUNG lanjut
  *   TURN      : depan buntu -> putar di tempat
  *
  *  Merah terdeteksi -> pulang ke titik start lewat breadcrumb path, lalu berhenti.
@@ -34,30 +34,18 @@
 
 /* ---------- Sensor jarak ---------- */
 #define WALL_DETECT 80.0        /* di atas ini = ada tembok */
-#define FRONT_ARC_DETECT 250.0  /* ambang depan saat tikungan keluar (biar tembok sudut tidak dikira buntu) */
+#define FRONT_ARC_DETECT 250.0  /* ambang depan saat tikungan keluar */
 #define CORNER_NEAR 400.0       /* sensor 45 derajat di atas ini = terlalu dekat */
 #define OPP_NEAR 400.0          /* tembok sisi seberang terlalu dekat */
 #define TURN_EXTRA_STEPS 1      /* muter sebentar setelah depan bebas */
 
-/* ---------- ALIGN (ngelurusin) ---------- */
-#define ALIGN_SPEED 1.5
-#define ALIGN_SWEEP 0.6         /* rad (~34 derajat) sapuan kiri-kanan */
-#define ALIGN_TOL 0.05          /* rad */
-#define ALIGN_MAX_SAMPLES 160
-#define ALIGN_RETRY_MAX 2       /* kalau puncak di tepi sapuan, sapu ulang */
-#define ALIGN_TIMEOUT 250       /* step */
-
 /* ---------- FOLLOW (jalan lurus sambil pantau) ---------- */
-#define REF_MIN 100.0           /* batas jarak ideal (nilai sensor) */
-#define REF_MAX 250.0
-#define NEAR_FACTOR 1.4         /* > ref*1.4+NEAR_ADD  = mau nabrak tembok tumpuan */
-#define NEAR_ADD 30.0
-#define FAR_FACTOR 0.6          /* < ref*0.6 = mulai menjauh */
-#define HDG_BIAS 0.25           /* rad (~14 derajat) miring maksimal saat koreksi jarak */
-#define KP_HDG 6.0
+#define SIDE_TARGET 150.0       /* nilai sensor samping yang diinginkan */
+#define KP_WALL 0.012           /* koreksi karena jarak */
+#define KD_WALL 0.03            /* koreksi karena arah perubahan jarak (ngelurusin sambil jalan) */
+#define E_DEADBAND 30.0         /* selama selisih jarak kecil -> dianggap pas */
+#define D_DEADBAND 8.0          /* selama perubahan jarak kecil -> dianggap lurus */
 #define STEER_LIMIT 3.0
-#define REALIGN_ANGLE 0.5       /* rad: heading melenceng sebesar ini -> ALIGN ulang */
-#define REALIGN_COOLDOWN 20
 
 /* ---------- Tembok tumpuan hilang (belokan keluar) ---------- */
 #define LOST_FWD_STEPS 3
@@ -86,18 +74,11 @@
 typedef struct { double x, y; } Point;
 typedef enum { EXPLORE, RETURN_HOME, DONE } State;
 typedef enum { SIDE_NONE, SIDE_LEFT, SIDE_RIGHT } Side;
-typedef enum { M_OPEN, M_TURN, M_ALIGN, M_FOLLOW, M_LOST_FWD, M_LOST_ARC } Mode;
+typedef enum { M_OPEN, M_TURN, M_FOLLOW, M_LOST_FWD, M_LOST_ARC } Mode;
 
 static Point path[MAX_PATH];
 static int path_len = 0;
 static bool visited[GRID_N][GRID_N];
-
-/* State ALIGN */
-static double al_off[ALIGN_MAX_SAMPLES];
-static double al_val[ALIGN_MAX_SAMPLES];
-static int al_n, al_phase, al_steps, al_retry;
-static double al_base, al_target, al_max;
-static bool al_keep_ref, al_edge;
 
 static double clampd(double v, double lo, double hi) {
   return v < lo ? lo : (v > hi ? hi : v);
@@ -145,42 +126,6 @@ static void path_record(double x, double y) {
   }
 }
 
-static void begin_align(double theta_now, bool keep_ref) {
-  al_base = theta_now;
-  al_phase = 0;
-  al_n = 0;
-  al_steps = 0;
-  al_retry = 0;
-  al_keep_ref = keep_ref;
-  al_edge = false;
-  al_target = 0.0;
-  al_max = 0.0;
-}
-
-/* Hitung offset puncak (arah paralel tembok) dari sampel sapuan */
-static void align_compute_target(void) {
-  double mx = 0.0;
-  for (int i = 0; i < al_n; i++)
-    if (al_val[i] > mx) mx = al_val[i];
-
-  double sum = 0.0;
-  int cnt = 0;
-  for (int i = 0; i < al_n; i++) {
-    if (al_val[i] >= mx * 0.97) {
-      sum += al_off[i];
-      cnt++;
-    }
-  }
-  al_max = mx;
-  if (cnt > 0 && mx >= WALL_DETECT) {
-    al_target = sum / cnt;
-    al_edge = fabs(al_target) > (ALIGN_SWEEP - 0.1);
-  } else {
-    al_target = 0.0; /* tembok hilang -> balik ke heading awal */
-    al_edge = false;
-  }
-}
-
 int main(int argc, char **argv) {
   wb_robot_init();
 
@@ -218,9 +163,8 @@ int main(int argc, char **argv) {
   Mode mode = M_OPEN;
   Side follow_side = SIDE_NONE;
 
-  double wall_theta = 0.0;
-  double ref = 150.0;
-  int realign_cd = 0;
+  double follow_prev = 0.0;
+  bool follow_first = true;
   int lost_cnt = 0;
   double arc_turned = 0.0;
   int turn_dir = 0; /* 1 = kanan, -1 = kiri */
@@ -296,7 +240,7 @@ int main(int argc, char **argv) {
 
       /* ===== 5. Deteksi tembok ===== */
       double front_thr = (mode == M_LOST_ARC) ? FRONT_ARC_DETECT : WALL_DETECT;
-      bool front = (mode != M_ALIGN) && (v[0] > front_thr || v[7] > front_thr);
+      bool front = (v[0] > front_thr || v[7] > front_thr);
 
       double sl_any = fmax(v[5], v[6]);
       double sr_any = fmax(v[2], v[1]);
@@ -338,6 +282,7 @@ int main(int argc, char **argv) {
             ls = CRUISE_SPEED;
             rs = CRUISE_SPEED;
           } else if (left_wall || right_wall) {
+            /* Nemu tembok -> langsung FOLLOW (tanpa berhenti) */
             Side s;
             if (left_wall && right_wall) {
               if (follow_side != SIDE_NONE) s = follow_side;
@@ -346,83 +291,14 @@ int main(int argc, char **argv) {
               s = left_wall ? SIDE_LEFT : SIDE_RIGHT;
             }
             follow_side = s;
-            begin_align(theta, false);
-            mode = M_ALIGN;
-            ls = 0.0;
-            rs = 0.0;
+            follow_first = true;
+            mode = M_FOLLOW;
+            ls = CRUISE_SPEED;
+            rs = CRUISE_SPEED;
           } else {
             /* Tidak ada tembok -> lurus sampai nemu tembok */
             ls = CRUISE_SPEED;
             rs = CRUISE_SPEED;
-          }
-          break;
-        }
-
-        case M_ALIGN: {
-          double sv_al = (follow_side == SIDE_RIGHT) ? v[2] : v[5];
-          double off = normalize_angle(theta - al_base);
-          al_steps++;
-
-          if (al_phase < 2 && al_n < ALIGN_MAX_SAMPLES) {
-            al_off[al_n] = off;
-            al_val[al_n] = sv_al;
-            al_n++;
-          }
-
-          bool finish = false;
-
-          if (al_phase == 0) {
-            /* Sapu ke kiri (CCW) */
-            ls = -ALIGN_SPEED;
-            rs = ALIGN_SPEED;
-            if (off >= ALIGN_SWEEP) al_phase = 1;
-          } else if (al_phase == 1) {
-            /* Sapu ke kanan (CW) */
-            ls = ALIGN_SPEED;
-            rs = -ALIGN_SPEED;
-            if (off <= -ALIGN_SWEEP) {
-              align_compute_target();
-              al_phase = 2;
-            }
-          } else {
-            /* Putar ke arah paralel (puncak) */
-            double e = al_target - off;
-            if (fabs(e) < ALIGN_TOL) {
-              if (al_edge && al_retry < ALIGN_RETRY_MAX) {
-                /* Puncak di tepi sapuan -> sapu ulang dari heading sekarang */
-                al_retry++;
-                al_base = theta;
-                al_phase = 0;
-                al_n = 0;
-                al_edge = false;
-              } else {
-                finish = true;
-              }
-              ls = 0.0;
-              rs = 0.0;
-            } else {
-              double spd = clampd(3.0 * e, -ALIGN_SPEED, ALIGN_SPEED);
-              if (fabs(spd) < 0.5) spd = copysign(0.5, e);
-              ls = -spd;
-              rs = spd;
-            }
-          }
-
-          if (al_steps > ALIGN_TIMEOUT) finish = true;
-
-          if (finish) {
-            wall_theta = theta;
-            ls = 0.0;
-            rs = 0.0;
-            if (al_max >= WALL_DETECT) {
-              if (!al_keep_ref) ref = clampd(al_max, REF_MIN, REF_MAX);
-              mode = M_FOLLOW;
-              realign_cd = REALIGN_COOLDOWN;
-              printf("[ALIGN] Sejajar tembok %s (ref=%.0f)\n",
-                     follow_side == SIDE_RIGHT ? "kanan" : "kiri", ref);
-            } else {
-              mode = M_OPEN;
-            }
           }
           break;
         }
@@ -443,30 +319,24 @@ int main(int argc, char **argv) {
             break;
           }
 
-          if (realign_cd > 0) realign_cd--;
-          double th_err = normalize_angle(theta - wall_theta);
-
-          if (fabs(th_err) > REALIGN_ANGLE && realign_cd == 0) {
-            /* Sudah tidak lurus lagi -> ngelurusin ulang */
-            begin_align(theta, true);
-            mode = M_ALIGN;
-            ls = 0.0;
-            rs = 0.0;
-            break;
+          if (follow_first) {
+            follow_prev = sv;
+            follow_first = false;
           }
 
-          double near_lim = ref * NEAR_FACTOR + NEAR_ADD;
-          double far_lim = fmax(ref * FAR_FACTOR, WALL_DETECT * 1.15);
-          bool near_wall = (sv > near_lim) || (dv > CORNER_NEAR);
-          bool far_wall = (sv < far_lim);
-          bool opp_near = (ov > OPP_NEAR);
+          /* e > 0: terlalu dekat tembok tumpuan. d > 0: sedang mendekat */
+          double e = sv - SIDE_TARGET;
+          if (dv > CORNER_NEAR) e += (dv - CORNER_NEAR);      /* sudut mau nabrak */
+          if (ov > OPP_NEAR) e -= 0.5 * (ov - OPP_NEAR);      /* seberang terlalu dekat */
+          double d = sv - follow_prev;
+          follow_prev = sv;
 
-          double desired = 0.0; /* offset heading yang diinginkan terhadap wall_theta */
-          if (near_wall && !opp_near) desired = wall_sign * HDG_BIAS;        /* mau nabrak -> jauhi */
-          else if (opp_near && !near_wall) desired = -wall_sign * HDG_BIAS; /* seberang dekat -> dekati tumpuan */
-          else if (far_wall) desired = -wall_sign * HDG_BIAS;               /* menjauh -> dekati */
+          if (fabs(e) < E_DEADBAND) e = 0.0;
+          if (fabs(d) < D_DEADBAND) d = 0.0;
 
-          double steer = clampd(KP_HDG * (th_err - desired), -STEER_LIMIT, STEER_LIMIT); /* + = belok kanan */
+          /* steer positif = belok kanan. Tembok kanan & terlalu dekat -> belok kiri */
+          double steer = -wall_sign * (KP_WALL * e + KD_WALL * d);
+          steer = clampd(steer, -STEER_LIMIT, STEER_LIMIT);
           ls = CRUISE_SPEED + steer;
           rs = CRUISE_SPEED - steer;
           break;
@@ -477,6 +347,7 @@ int main(int argc, char **argv) {
           double sv = right ? v[2] : v[5];
           if (sv > WALL_DETECT) {
             mode = M_FOLLOW; /* cuma celah kecil, tembok lanjut */
+            follow_first = true;
           } else if (++lost_cnt > LOST_FWD_STEPS) {
             mode = M_LOST_ARC;
             arc_turned = 0.0;
@@ -492,11 +363,11 @@ int main(int argc, char **argv) {
           arc_turned += fabs(dth);
 
           if (sv > WALL_DETECT) {
-            /* Tembok ketemu lagi -> ngelurusin */
-            begin_align(theta, false);
-            mode = M_ALIGN;
-            ls = 0.0;
-            rs = 0.0;
+            /* Tembok ketemu lagi -> langsung lanjut FOLLOW */
+            mode = M_FOLLOW;
+            follow_first = true;
+            ls = CRUISE_SPEED;
+            rs = CRUISE_SPEED;
           } else if (arc_turned > ARC_MAX_TURN) {
             /* Tidak ada tembok -> area kosong, lurus */
             mode = M_OPEN;
