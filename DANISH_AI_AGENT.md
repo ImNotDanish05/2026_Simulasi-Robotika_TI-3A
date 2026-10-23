@@ -27,7 +27,7 @@ Coursework repository for Robotics Simulation (Simulasi Robotika TI-3A), contain
 - Ultrasonic sensors use 3-pin SIG mode (`readUltrasonicDistance(pin, pin)`).
 - Webots E-puck wheel motors: `"left wheel motor"` and `"right wheel motor"`, MAX_SPEED = 6.28 rad/s.
 - E-puck motor modes: Velocity control uses `wb_motor_set_position(m, INFINITY)` + `wb_motor_set_velocity()`; Position control sets specific target radians.
-- E-puck sensor devices: 8 infrared distance sensors `"ps0"`..`"ps7"` (front: `ps0`, `ps7`; corners: `ps1`, `ps6`), 8 light sensors `"ls0"`..`"ls7"`, 10 LEDs `"led0"`..`"led9"`. Distance sensors MUST be enabled via `wb_distance_sensor_enable(tag, TIME_STEP)` before calling `wb_distance_sensor_get_value()`.
+- E-puck sensor devices: 8 infrared distance sensors `"ps0"`..`"ps7"` (front: `ps0`, `ps7`; corners: `ps1`, `ps6`), 8 light sensors `"ls0"`..`"ls7"`, 10 LEDs `"led0"`..`"led9"`. Distance sensors MUST be enabled via `wb_distance_sensor_enable(tag, TIME_STEP)` before calling `wb_distance_sensor_get_value()`. Max IR detection range is ~7.0 cm (lookupTable response 4095 at 0cm down to 67.19 at 7cm).
 
 ## DO NOT touch
 - `.git/` files
@@ -36,10 +36,11 @@ Coursework repository for Robotics Simulation (Simulasi Robotika TI-3A), contain
 ## Known gotchas
 - Arduino Uno pins 12 & 13 do NOT support hardware PWM; software PWM via `micros()` is required (see Bab-01 Program 09).
 - `controller_robot_sensor_4.c` uses a 3-rule reactive right-wall follower integrated with E-puck camera red color detection to stop upon reaching the goal.
-- `global_robot_controller_sensor.c` implements Opsi A (Dual Wall-Following Left-Wall return) with `RETURN_ENTER_ROOM` to drive fully inside the start room.
+- `global_robot_controller_sensor.c` in UTS directory is used for real-time sensor distance evaluation and wall detection telemetry.
 - `controller_yafi.c` uses extended arc search limit (3.80 rad), tight inner wheel ratio (0.08), and dual side+corner sensors to safely round 180° hairpin wall tips without losing wall lock.
 
 ## Changelog (newest first, 1 line per entry, NOT a diff)
+- 2026-10-23: Implemented E-puck distance capability & wall detection telemetry in UTS global_robot_controller_sensor.c and added E-puckDistanceSensor.proto reference in catatan.
 - 2026-10-15: Fixed 180° wall-tip cornering in controller_yafi.c by increasing arc limit to 3.80 rad and combining side+corner sensor detection.
 - 2026-10-15: Created distinct UTS variations for Yafi (uts_yafi), Abi (uts_abi), and Ben (uts_ben) with unique ASTs, PID tuning, visual themes, and red box targets.
 - 2026-10-15: Updated Adzi's UTS world and controller to use red goal box (kotak merah 10x10x10cm) per lecturer specification.
