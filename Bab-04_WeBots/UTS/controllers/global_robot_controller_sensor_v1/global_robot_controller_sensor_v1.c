@@ -74,6 +74,8 @@
 #define W_ARC         1.0     /* rad/s                                 */
 #define ARC_PRE_STEPS 12       /* langkah lurus dulu sebelum membelok (lewati ujung) */
 #define ARC_TIMEOUT   6.0     /* s, kalau tembok tidak ketemu lagi -> SEEK */
+#define ALIGN_SEEN    80.0    /* ps3 & ps4 di atas ini di awal = ada tembok di belakang (baseline ~67) */
+#define ALIGN_TIMEOUT 2.5     /* s, batas waktu putar awal -> kalau gagal, lanjut SEEK */
 
 /* Deteksi hijau */
 #define MIN_BLOB_PX   6       /* piksel minimum supaya dianggap target */
@@ -118,8 +120,8 @@ static const char *STATE_NAME[] = {
   "PARK_TURN1", "PARK_DRIVE", "PARK_TURN2", "DONE"
 };
 
-typedef enum { WF_SEEK, WF_FOLLOW, WF_TURN, WF_ARC } WfMode;
-static const char *WF_NAME[] = { "SEEK", "FOLLOW", "TURN", "ARC" };
+typedef enum { WF_SEEK, WF_FOLLOW, WF_TURN, WF_ARC, WF_ALIGN } WfMode;
+static const char *WF_NAME[] = { "SEEK", "FOLLOW", "TURN", "ARC", "ALIGN" };
 
 /* ------------------------------------------------------------------ */
 /*  Global                                                             */
@@ -145,7 +147,7 @@ static State  state = S_WALL;
 static double t_state = 0.0;
 static int    wp_idx = 0;
 static int    align = 1;           /* 1 = putar di tempat dulu sebelum maju */
-static WfMode wf_mode = WF_SEEK;
+static WfMode wf_mode = WF_ALIGN;   /* awal: cek tembok belakang dulu, kalau tidak ada -> SEEK */
 static int    wf_steps = 0;        /* penghitung langkah di mode WF saat ini */
 static double wf_t0 = 0.0;
 static int    green_frames = 0;    /* frame beruntun yang melihat hijau      */
@@ -375,6 +377,23 @@ static void wall_follow(void) {
   wf_steps++;
 
   switch (wf_mode) {
+
+  /* awal: kalau tembok ada di belakang (ps3 & ps4), putar ke sisi tembok (kiri kalau
+     WALL_HAND=+1) supaya tembok belakang jadi tembok samping -> langsung FOLLOW.
+     Kalau tidak ada tembok di belakang -> SEEK (maju lurus) seperti biasa. */
+  case WF_ALIGN:
+    if (wf_steps == 1) {
+      int rear = (psv[3] > ALIGN_SEEN && psv[4] > ALIGN_SEEN);
+      printf("[%6.2fs]   align awal: rear ps3=%.0f ps4=%.0f -> %s\n",
+             t, psv[3], psv[4], (rear && !blocked) ? "putar" : "lurus (SEEK)");
+      if (!rear || blocked) { wf_set(WF_SEEK); break; }
+    }
+    set_vw(0.0, WALL_HAND * W_TURN_WF);                /* + = putar kiri (CCW) */
+    if (sd > SEEN_RAW && sf >= sr)                     /* tembok sudah di samping (sf mulai > sr) */
+      wf_set(WF_FOLLOW);
+    else if (t - wf_t0 > ALIGN_TIMEOUT)
+      wf_set(WF_SEEK);
+    break;
 
   /* belum ada tembok di sisi yang diikuti: maju lurus sampai ketemu */
   case WF_SEEK:
