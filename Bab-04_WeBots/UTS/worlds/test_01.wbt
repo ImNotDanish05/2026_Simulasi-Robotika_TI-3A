@@ -17,7 +17,7 @@ WorldInfo {
 }
 Viewpoint {
   orientation -0.5454450374757449 0.5549336063918532 0.6281229207647298 2.1082419538353663
-  position -0.22593710205999762 -0.474330987820356 2.509603976391665
+  position -0.17328558151677628 -0.5437642726484172 3.352626038762964
 }
 TexturedBackground {
 }
@@ -222,7 +222,7 @@ Solid {
 E-puck {
   translation 0.081162 -0.546865 0
   rotation 0 0 -1 0
-  controller "global_robot_controller_sensor"
+  controller "global_robot_controller_sensor_v1"
   camera_width 64
   camera_height 64
 }
