@@ -34,6 +34,9 @@ const int BELOK_KIRI = 180;     // Kecepatan motor saat berbelok (0-255)
 const int BELOK_KANAN = 180;    // Kecepatan motor saat berbelok (0-255)
 const int PUTAR_BALIK = 255;    // Kecepatan motor saat putar balik (0-255)
 
+const int KECEPATAN_MUNDUR = 200;     // Kecepatan motor saat mundur (0-255)
+const int BATAS_WAKTU_MUNDUR = 3000;  // Batas maksimal mundur (ms), pengaman
+
 void setup() {
   Serial.begin(115200);
 
@@ -64,14 +67,11 @@ void loop() {
   Serial.println(" cm");
 
   if (jarakDepan > JARAK_AMAN) {
-    // Jalur depan aman -> Mobil otomatis maju
     maju(KECEPATAN_MAJU);
   } else {
-    // 1. ADA HALANGAN DI DEPAN -> Mobil Berhenti
     berhenti();
     delay(300);
 
-    // 2. Baca sensor kanan dan kiri (tanpa servo, langsung baca)
     delay(JEDA_ANTAR_SENSOR);
     int jarakKanan = bacaJarak(TRIG_PIN_2, ECHO_PIN_2);
     delay(JEDA_ANTAR_SENSOR);
@@ -99,13 +99,65 @@ void loop() {
       delay(300);
     }
     else {
-      // 3. Kanan & Kiri terhalang -> Putar Balik
-      putarBalik(PUTAR_BALIK);
-      delay(WAKTU_PUTAR_180);
+      // Depan, kanan, kiri semua terhalang -> MUNDUR dulu
+      Serial.println("Semua terhalang, mundur...");
+
+      bool kananBebas = false;
+      bool kiriBebas = false;
+      unsigned long mulaiMundur = millis();
+
+      mundur(KECEPATAN_MUNDUR);
+
+      // Mundur terus sampai salah satu sisi (kanan/kiri) tidak ada tembok
+      while (millis() - mulaiMundur < BATAS_WAKTU_MUNDUR) {
+        delay(JEDA_ANTAR_SENSOR);
+        jarakKanan = bacaJarak(TRIG_PIN_2, ECHO_PIN_2);
+        delay(JEDA_ANTAR_SENSOR);
+        jarakKiri = bacaJarak(TRIG_PIN_3, ECHO_PIN_3);
+
+        kananBebas = (jarakKanan > JARAK_AMAN);
+        kiriBebas  = (jarakKiri  > JARAK_AMAN);
+
+        Serial.print("Mundur - Kanan: ");
+        Serial.print(jarakKanan);
+        Serial.print(" cm | Kiri: ");
+        Serial.print(jarakKiri);
+        Serial.println(" cm");
+
+        if (kananBebas || kiriBebas) break;
+      }
+
       berhenti();
       delay(300);
 
-      // Setelah putar balik, loop() otomatis mengukur jarak depan lagi.
+      // Tentukan arah setelah mundur
+      if (kananBebas && kiriBebas) {
+        // Kanan & kiri sama-sama tidak ada tembok -> Putar balik
+        Serial.println("Kanan & kiri bebas -> Putar balik");
+        putarBalik(PUTAR_BALIK);
+        delay(WAKTU_PUTAR_180);
+      }
+      else if (kananBebas) {
+        // Tembok kiri masih ada, kanan bebas -> Belok kanan
+        Serial.println("Tembok kiri ada -> Belok kanan");
+        belokKanan(BELOK_KANAN);
+        delay(WAKTU_BELOK_90);
+      }
+      else if (kiriBebas) {
+        // Tembok kanan masih ada, kiri bebas -> Belok kiri
+        Serial.println("Tembok kanan ada -> Belok kiri");
+        belokKiri(BELOK_KIRI);
+        delay(WAKTU_BELOK_90);
+      }
+      else {
+        // Waktu mundur habis dan masih terhalang -> putar balik
+        Serial.println("Timeout mundur -> Putar balik");
+        putarBalik(PUTAR_BALIK);
+        delay(WAKTU_PUTAR_180);
+      }
+
+      berhenti();
+      delay(300);
     }
   }
 
