@@ -13,6 +13,16 @@ const int ENB = 33; // D33 - PWM Kecepatan Motor Kanan
 const int TRIG_PIN = 18; // D18
 const int ECHO_PIN = 19; // D19 (Gunakan pembagi tegangan 1kΩ & 2kΩ)
 
+// Sensor 2 (kanan) - TRIG pakai pin bekas servo
+const int TRIG_PIN_2 = 4;  // D4 (dulu SERVO_PIN)
+const int ECHO_PIN_2 = 34; // D34 (input only, pin baru)
+ 
+// Sensor 3 (kiri) - pin baru
+const int TRIG_PIN_3 = 32; // D32
+const int ECHO_PIN_3 = 35; // D35 (input only, pin baru)
+ 
+
+
 // --- PIN SERVO ---
 const int SERVO_PIN = 4; // D4
 
