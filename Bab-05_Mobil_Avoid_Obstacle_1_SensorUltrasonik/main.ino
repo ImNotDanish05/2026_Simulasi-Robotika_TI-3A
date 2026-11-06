@@ -1,138 +1,199 @@
-#include <WiFi.h>         // WAJIB pakai ini untuk ESP32 (menggantikan ESP8266WiFi.h)
-#include <PubSubClient.h>
-#include <DHT.h>
-#include "config.h"       // Memanggil kredensial rahasia dari config.h yang aman
+#include <ESP32Servo.h>
 
-// ==========================================
-// KONFIGURASI TOPIK MQTT (NIM: 4.33.24.0.09)
-// ==========================================
-const char* TOPIC_SUHU        = "UAS25-IOT/4.33.24.0.09/SUHU";
-const char* TOPIC_KELEMBAPAN  = "UAS25-IOT/4.33.24.0.09/KELEMBAPAN";
-const char* TOPIC_LUMEN       = "UAS25-IOT/4.33.24.0.09/LUMEN";
-const char* TOPIC_STATUS      = "UAS25-IOT/Status";
+// --- PIN MOTOR DRIVER L298N KE ESP32 ---
+const int ENA = 13; // D13 - PWM Kecepatan Motor Kiri
+const int IN1 = 14; // D14 - Arah Motor Kiri
+const int IN2 = 27; // D27 - Arah Motor Kiri
 
-// ==========================================
-// KONFIGURASI PIN HARDWARE (ESP32 DEVKIT V1)
-// ==========================================
-#define DHTPIN  26     // Dicolok ke pin GPIO 26 (D26)
-#define DHTTYPE DHT11  // Jenis Sensor DHT
-#define LDRPIN  34     // Dicolok ke pin GPIO 34 (Pin ADC murni, aman saat WiFi nyala)
-#define LEDPIN  2      // GPIO 2 (Biasanya tersambung ke LED Biru internal ESP32)
+const int IN3 = 26; // D26 - Arah Motor Kanan
+const int IN4 = 25; // D25 - Arah Motor Kanan
+const int ENB = 33; // D33 - PWM Kecepatan Motor Kanan
 
-DHT dht(DHTPIN, DHTTYPE);
-WiFiClient espClient;
-PubSubClient client(espClient);
+// --- PIN SENSOR ULTRASONIK (HC-SR04) ---
+const int TRIG_PIN = 18; // D18
+const int ECHO_PIN = 19; // D19 (Gunakan pembagi tegangan 1kΩ & 2kΩ)
 
-// Variabel Kontrol Pengiriman Data
-bool isPublishing = false; 
-unsigned long lastMsg = 0;
+// --- PIN SERVO ---
+const int SERVO_PIN = 4; // D4
 
-void setup_wifi() {
-  delay(10);
-  Serial.begin(115200);
-  Serial.println();
-  Serial.print("Connecting to ");
-  Serial.println(SSID_WIFI);
+// --- PARAMETER PENGATURAN ---
+const int JARAK_AMAN = 25;       // Batas deteksi halangan (dalam cm)
+const int WAKTU_BELOK_90 = 500;   // Durasi (ms) agar robot berbelok ~90 derajat
+const int WAKTU_PUTAR_180 = 500; // Durasi (ms) agar robot putar balik ~180 derajat
 
-  WiFi.begin(SSID_WIFI, PASSWORD_WIFI);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-
-  Serial.println("\nWiFi connected");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-}
-
-// Fungsi Callback untuk memproses perintah START / STOP
-void callback(char* topic, byte* payload, unsigned int length) {
-  String message = "";
-  for (unsigned int i = 0; i < length; i++) {
-    message += (char)payload[i];
-  }
-
-  Serial.print("Pesan masuk di topik [");
-  Serial.print(topic);
-  Serial.print("]: ");
-  Serial.println(message);
-
-  // Implementasi Mekanisme Kontrol
-  if (String(topic) == TOPIC_STATUS) {
-    if (message == "START") {             
-      isPublishing = true;
-      digitalWrite(LEDPIN, HIGH);         // LED Status Menyala
-      Serial.println("Status: START -> Memulai publikasi data sensor.");
-    } else if (message == "STOP") {       
-      isPublishing = false;
-      digitalWrite(LEDPIN, LOW);          // LED Status Mati
-      Serial.println("Status: STOP -> Menghentikan publikasi data sensor.");
-    }
-  }
-}
-
-void reconnect() {
-  while (!client.connected()) {
-    Serial.print("Menghubungkan ke MQTT Broker...");
-    // Menggunakan Kredensial User 1 (Mahasiswa)
-    if (client.connect("ESP32_Danish", MQTT_USER, MQTT_PASS)) {
-      Serial.println("Terhubung!");
-      // Mengambil data dari topik kontrol
-      client.subscribe(TOPIC_STATUS);
-    } else {
-      Serial.print("Gagal, rc=");
-      Serial.print(client.state());
-      Serial.println(" Mencoba kembali dalam 5 detik...");
-      delay(5000);
-    }
-  }
-}
+// --- KECEPATAN BELOK MOTOR ---
+const int BELOK_KIRI = 180; // Kecepatan motor saat berbelok (0-255)
+const int BELOK_KANAN = 180; // Kecepatan motor saat berbelok (0-255)
+const int PUTAR_BALIK = 255; // Kecepatan motor saat putar balik (0-255)
+    
+Servo myServo;
 
 void setup() {
-  pinMode(LEDPIN, OUTPUT);
-  digitalWrite(LEDPIN, LOW); // Default LED mati sebelum ada perintah START
-  
-  setup_wifi();
-  dht.begin();
-  
-  client.setServer(MQTT_SERVER, MQTT_PORT);
-  client.setCallback(callback);
+  Serial.begin(115200);
+
+  // Konfigurasi pin motor
+  pinMode(ENA, OUTPUT);
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  pinMode(IN3, OUTPUT);
+  pinMode(IN4, OUTPUT);
+  pinMode(ENB, OUTPUT);
+
+  // Konfigurasi pin sensor ultrasonik
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+
+  // Inisialisasi Servo ke posisi depan (90 derajat)
+  myServo.attach(SERVO_PIN);
+  myServo.write(90);
+
+  berhenti();
+  delay(2000); // Jeda awal 2 detik sebelum mobil bergerak
 }
 
 void loop() {
-  if (!client.connected()) {
-    reconnect();
-  }
-  client.loop();
+  // Pastikan servo selalu menghadap ke depan saat bergerak
+  myServo.write(90);
+  
+  int jarakDepan = bacaJarak();
+  Serial.print("Jarak Depan: ");
+  Serial.print(jarakDepan);
+  Serial.println(" cm");
 
-  // Logika Publikasi Data Sensor: Hanya jika isPublishing bernilai true (START)
-  if (isPublishing) {
-    unsigned long now = millis();
-    if (now - lastMsg > 2000) { // Pengiriman data berkala setiap 2 detik
-      lastMsg = now;
+  if (jarakDepan > JARAK_AMAN) {
+    // Jalur depan aman -> Mobil otomatis maju
+    maju(255);
+  } else {
+    // 1. ADA HALANGAN DI DEPAN -> Mobil Berhenti
+    berhenti();
+    delay(300);
 
-      // Membaca Nilai Sensor DHT11 dan LDR
-      float suhu = dht.readTemperature();   
-      float kelembapan = dht.readHumidity(); 
-      int lumen = analogRead(LDRPIN);       
+    // 2. Servo tengok ke kanan (0 derajat)
+    myServo.write(0);
+    delay(500); // Beri waktu servo berputar
+    int jarakKanan = bacaJarak();
+    Serial.print("Jarak Kanan: ");
+    Serial.print(jarakKanan);
+    Serial.println(" cm");
 
-      // Memastikan pembacaan sensor valid
-      if (!isnan(suhu) && !isnan(kelembapan)) {
-        Serial.print("Publish Data -> Suhu: ");
-        Serial.print(suhu);
-        Serial.print(" °C | Kelembapan: ");
-        Serial.print(kelembapan);
-        Serial.print(" % | Lumen: ");
-        Serial.println(lumen);
+    if (jarakKanan > JARAK_AMAN) {
+      // Kanan Aman -> Belok Kanan lalu Servo kembali ke Depan (90)
+      belokKanan(BELOK_KANAN);
+      delay(WAKTU_BELOK_90);
+      berhenti();
 
-        // Mempublikasikan data ke topik masing-masing
-        client.publish(TOPIC_SUHU, String(suhu).c_str());
-        client.publish(TOPIC_KELEMBAPAN, String(kelembapan).c_str());
-        client.publish(TOPIC_LUMEN, String(lumen).c_str());
-      } else {
-        Serial.println("Peringatan: Gagal membaca data dari sensor DHT11!");
+      myServo.write(90);
+      delay(300);
+    } 
+    else {
+      // 3. Kanan Ada Halangan -> Servo tengok ke kiri (180 derajat)
+      myServo.write(180);
+      delay(500);
+      int jarakKiri = bacaJarak();
+      Serial.print("Jarak Kiri: ");
+      Serial.print(jarakKiri);
+      Serial.println(" cm");
+
+      if (jarakKiri > JARAK_AMAN) {
+        // Kiri Aman -> Belok Kiri lalu Servo kembali ke Depan (90)
+        belokKiri(BELOK_KIRI);
+        delay(WAKTU_BELOK_90);
+        berhenti();
+
+        myServo.write(90);
+        delay(300);
+      } 
+      else {
+        // 4. Kanan & Kiri Terhalang -> Putar Balik
+        myServo.write(90); // Servo kembali menghadap depan
+        delay(300);
+
+        putarBalik(PUTAR_BALIK);
+        delay(WAKTU_PUTAR_180);
+        berhenti();
+        delay(300);
+
+        // Setelah putar balik, loop() otomatis akan mengukur jarak depan lagi.
+        // Jika depan aman -> Maju. Jika masih ada halangan -> Ulangi siklus pengecekan.
       }
     }
   }
+}
+
+// ==========================================
+//          FUNGSI SENSOR ULTRASONIK
+// ==========================================
+int bacaJarak() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  // Menerima pantulan gelombang (timeout 30ms ~ 5 meter)
+  long durasi = pulseIn(ECHO_PIN, HIGH, 30000); 
+  
+  if (durasi == 0) {
+    return 400; // Jika tidak ada pantulan, anggap jarak sangat jauh
+  }
+
+  int jarak = durasi * 0.034 / 2;
+  return jarak;
+}
+
+// ==========================================
+//           FUNGSI KONTROL MOTOR
+// ==========================================
+void maju(int speed) {
+  digitalWrite(IN1, HIGH);
+  digitalWrite(IN2, LOW);
+  analogWrite(ENA, speed);
+
+  digitalWrite(IN3, HIGH);
+  digitalWrite(IN4, LOW);
+  analogWrite(ENB, speed);
+}
+
+void mundur(int speed) {
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, HIGH);
+  analogWrite(ENA, speed);
+
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, HIGH);
+  analogWrite(ENB, speed);
+}
+
+void belokKiri(int speed) {
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, HIGH);
+  analogWrite(ENA, speed);
+
+  digitalWrite(IN3, HIGH);
+  digitalWrite(IN4, LOW);
+  analogWrite(ENB, speed);
+}
+
+void belokKanan(int speed) {
+  digitalWrite(IN1, HIGH);
+  digitalWrite(IN2, LOW);
+  analogWrite(ENA, speed);
+
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, HIGH);
+  analogWrite(ENB, speed);
+}
+
+void putarBalik(int speed) {
+  belokKanan(speed); // Berputar di tempat ke arah kanan
+}
+
+void berhenti() {
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, LOW);
+  analogWrite(ENA, 0);
+
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, LOW);
+  analogWrite(ENB, 0);
 }
