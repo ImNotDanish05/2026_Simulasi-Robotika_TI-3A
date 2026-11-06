@@ -41,7 +41,7 @@ Servo myServo;
 void setup() {
   Serial.begin(115200);
 
-  // Konfigurasi pin motor
+  // Pin motor
   pinMode(ENA, OUTPUT);
   pinMode(IN1, OUTPUT);
   pinMode(IN2, OUTPUT);
@@ -49,102 +49,140 @@ void setup() {
   pinMode(IN4, OUTPUT);
   pinMode(ENB, OUTPUT);
 
-  // Konfigurasi pin sensor ultrasonik
-  pinMode(TRIG_PIN, OUTPUT);
-  pinMode(ECHO_PIN, INPUT);
-
-  // Inisialisasi Servo ke posisi depan (90 derajat)
-  myServo.attach(SERVO_PIN);
-  myServo.write(90);
+  // Pin sensor ultrasonik
+  pinMode(TRIG_DEPAN, OUTPUT);
+  pinMode(ECHO_DEPAN, INPUT);
+  pinMode(TRIG_KANAN, OUTPUT);
+  pinMode(ECHO_KANAN, INPUT);
+  pinMode(TRIG_KIRI, OUTPUT);
+  pinMode(ECHO_KIRI, INPUT);
 
   berhenti();
   delay(2000); // Jeda awal 2 detik sebelum mobil bergerak
 }
 
 void loop() {
-  // Pastikan servo selalu menghadap ke depan saat bergerak
-  myServo.write(90);
-  
-  int jarakDepan = bacaJarak();
-  Serial.print("Jarak Depan: ");
+  int jarakDepan = bacaJarak(TRIG_DEPAN, ECHO_DEPAN);
+  Serial.print("Depan: ");
   Serial.print(jarakDepan);
   Serial.println(" cm");
 
+  // Depan aman -> maju terus
   if (jarakDepan > JARAK_AMAN) {
-    // Jalur depan aman -> Mobil otomatis maju
-    maju(255);
-  } else {
-    // 1. ADA HALANGAN DI DEPAN -> Mobil Berhenti
+    maju(KECEPATAN_MAJU);
+    return;
+  }
+
+  // Depan terhalang -> berhenti lalu cek kanan & kiri
+  berhenti();
+  delay(300);
+
+  int jarakKanan = bacaJarak(TRIG_KANAN, ECHO_KANAN);
+  delay(30);
+  int jarakKiri = bacaJarak(TRIG_KIRI, ECHO_KIRI);
+
+  Serial.print("Kanan: ");
+  Serial.print(jarakKanan);
+  Serial.print(" cm | Kiri: ");
+  Serial.print(jarakKiri);
+  Serial.println(" cm");
+
+  bool kananAda = (jarakKanan <= JARAK_AMAN); // true = ada tembok di kanan
+  bool kiriAda  = (jarakKiri  <= JARAK_AMAN); // true = ada tembok di kiri
+
+  if (!kananAda) {
+    // Kanan kosong -> belok kanan
+    belokKanan(BELOK_KANAN);
+    delay(WAKTU_BELOK_90);
     berhenti();
     delay(300);
+  }
+  else if (!kiriAda) {
+    // Kanan ada tembok, kiri kosong -> belok kiri
+    belokKiri(BELOK_KIRI);
+    delay(WAKTU_BELOK_90);
+    berhenti();
+    delay(300);
+  }
+  else {
+    // DEPAN, KANAN, KIRI semuanya terhalang
+    Serial.println("Buntu! Mundur sampai salah satu sisi kosong...");
+    mundurSampaiAdaCelah();
 
-    // 2. Servo tengok ke kanan (0 derajat)
-    myServo.write(0);
-    delay(500); // Beri waktu servo berputar
-    int jarakKanan = bacaJarak();
-    Serial.print("Jarak Kanan: ");
-    Serial.print(jarakKanan);
-    Serial.println(" cm");
+    // Setelah mundur, baca ulang kanan & kiri untuk menentukan arah
+    jarakKanan = bacaJarak(TRIG_KANAN, ECHO_KANAN);
+    delay(30);
+    jarakKiri = bacaJarak(TRIG_KIRI, ECHO_KIRI);
 
-    if (jarakKanan > JARAK_AMAN) {
-      // Kanan Aman -> Belok Kanan lalu Servo kembali ke Depan (90)
+    kananAda = (jarakKanan <= JARAK_AMAN);
+    kiriAda  = (jarakKiri  <= JARAK_AMAN);
+
+    if (kiriAda && !kananAda) {
+      // Tembok kiri ada -> belok kanan
+      Serial.println("Setelah mundur: tembok kiri ada -> belok kanan");
       belokKanan(BELOK_KANAN);
       delay(WAKTU_BELOK_90);
-      berhenti();
-
-      myServo.write(90);
-      delay(300);
-    } 
+    }
+    else if (kananAda && !kiriAda) {
+      // Tembok kanan ada -> belok kiri
+      Serial.println("Setelah mundur: tembok kanan ada -> belok kiri");
+      belokKiri(BELOK_KIRI);
+      delay(WAKTU_BELOK_90);
+    }
     else {
-      // 3. Kanan Ada Halangan -> Servo tengok ke kiri (180 derajat)
-      myServo.write(180);
-      delay(500);
-      int jarakKiri = bacaJarak();
-      Serial.print("Jarak Kiri: ");
-      Serial.print(jarakKiri);
-      Serial.println(" cm");
+      // Kanan & kiri sama-sama kosong (atau timeout mundur) -> putar balik
+      Serial.println("Setelah mundur: kanan & kiri kosong -> putar balik");
+      putarBalik(PUTAR_BALIK);
+      delay(WAKTU_PUTAR_180);
+    }
 
-      if (jarakKiri > JARAK_AMAN) {
-        // Kiri Aman -> Belok Kiri lalu Servo kembali ke Depan (90)
-        belokKiri(BELOK_KIRI);
-        delay(WAKTU_BELOK_90);
-        berhenti();
+    berhenti();
+    delay(300);
+  }
+}
 
-        myServo.write(90);
-        delay(300);
-      } 
-      else {
-        // 4. Kanan & Kiri Terhalang -> Putar Balik
-        myServo.write(90); // Servo kembali menghadap depan
-        delay(300);
+// ==========================================
+//        FUNGSI MUNDUR SAMPAI ADA CELAH
+// ==========================================
+// Mundur terus selama kanan DAN kiri masih ada tembok.
+// Berhenti begitu salah satu sisi kosong, atau kalau sudah melewati batas waktu.
+void mundurSampaiAdaCelah() {
+  unsigned long mulai = millis();
 
-        putarBalik(PUTAR_BALIK);
-        delay(WAKTU_PUTAR_180);
-        berhenti();
-        delay(300);
+  while (millis() - mulai < MAX_WAKTU_MUNDUR) {
+    mundur(KECEPATAN_MUNDUR);
 
-        // Setelah putar balik, loop() otomatis akan mengukur jarak depan lagi.
-        // Jika depan aman -> Maju. Jika masih ada halangan -> Ulangi siklus pengecekan.
-      }
+    int jarakKanan = bacaJarak(TRIG_KANAN, ECHO_KANAN);
+    delay(30);
+    int jarakKiri = bacaJarak(TRIG_KIRI, ECHO_KIRI);
+
+    bool kananKosong = (jarakKanan > JARAK_AMAN);
+    bool kiriKosong  = (jarakKiri  > JARAK_AMAN);
+
+    if (kananKosong || kiriKosong) {
+      break;
     }
   }
+
+  berhenti();
+  delay(300);
 }
 
 // ==========================================
 //          FUNGSI SENSOR ULTRASONIK
 // ==========================================
-int bacaJarak() {
-  digitalWrite(TRIG_PIN, LOW);
+int bacaJarak(int trigPin, int echoPin) {
+  digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
-  digitalWrite(TRIG_PIN, HIGH);
+  digitalWrite(trigPin, HIGH);
   delayMicroseconds(10);
-  digitalWrite(TRIG_PIN, LOW);
+  digitalWrite(trigPin, LOW);
 
-  // Menerima pantulan gelombang (timeout 30ms ~ 5 meter)
-  long durasi = pulseIn(ECHO_PIN, HIGH, 30000); 
-  
+  // Timeout 30ms (~5 meter)
+  long durasi = pulseIn(echoPin, HIGH, 30000);
+
   if (durasi == 0) {
-    return 400; // Jika tidak ada pantulan, anggap jarak sangat jauh
+    return 400; // Tidak ada pantulan -> anggap sangat jauh
   }
 
   int jarak = durasi * 0.034 / 2;
