@@ -35,7 +35,7 @@ const int BELOK_KANAN = 180;    // Kecepatan motor saat berbelok (0-255)
 const int PUTAR_BALIK = 255;    // Kecepatan motor saat putar balik (0-255)
 
 const int KECEPATAN_MUNDUR = 200;     // Kecepatan motor saat mundur (0-255)
-const int BATAS_WAKTU_MUNDUR = 3000;  // Batas maksimal mundur (ms), pengaman
+const int BATAS_WAKTU_MUNDUR = 10000;  // Batas maksimal mundur (ms), pengaman
 
 void setup() {
   Serial.begin(115200);
