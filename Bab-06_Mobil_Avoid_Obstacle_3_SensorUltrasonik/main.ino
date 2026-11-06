@@ -1,4 +1,4 @@
-  // --- PIN MOTOR DRIVER L298N KE ESP32 (tidak berubah) ---
+// --- PIN MOTOR DRIVER L298N KE ESP32 (tidak berubah) ---
   const int ENA = 13; // D13 - PWM Kecepatan Motor Kiri
   const int IN1 = 14; // D14 - Arah Motor Kiri
   const int IN2 = 27; // D27 - Arah Motor Kiri
@@ -59,71 +59,66 @@
     delay(2000); // Jeda awal 2 detik sebelum mobil bergerak
   }
 
-  void loop() {
-    int jarakDepan = bacaJarak(TRIG_PIN_1, ECHO_PIN_1);
-    Serial.print("Jarak Depan: ");
-    Serial.print(jarakDepan);
-    Serial.println(" cm");
+void loop() {
+  int jarakDepan = bacaJarak(TRIG_PIN_1, ECHO_PIN_1);
+  Serial.print("Jarak Depan: ");
+  Serial.print(jarakDepan);
+  Serial.println(" cm");
 
-    if (jarakDepan > JARAK_AMAN) {
-      maju(KECEPATAN_MAJU);
-    else {
-      // Depan, kanan, kiri semua terhalang -> MUNDUR sampai ada sisi yang bebas
-      Serial.println("Semua terhalang, mundur...");
+  if (jarakDepan > JARAK_AMAN) {
+    maju(KECEPATAN_MAJU);
+  } else {
+    // Depan terhalang -> MUNDUR sampai ada sisi yang bebas
+    Serial.println("Depan terhalang, mundur...");
 
-      bool kananBebas = false;
-      bool kiriBebas = false;
+    int jarakKanan = 0;
+    int jarakKiri = 0;
+    bool kananBebas = false;
+    bool kiriBebas = false;
 
-      mundur(KECEPATAN_MUNDUR);
+    mundur(KECEPATAN_MUNDUR);
 
-      // Mundur terus tanpa batas waktu, berhenti hanya kalau kanan/kiri bebas
-      while (true) {
-        delay(JEDA_ANTAR_SENSOR);
-        jarakKanan = bacaJarak(TRIG_PIN_2, ECHO_PIN_2);
-        delay(JEDA_ANTAR_SENSOR);
-        jarakKiri = bacaJarak(TRIG_PIN_3, ECHO_PIN_3);
+    while (true) {
+      delay(JEDA_ANTAR_SENSOR);
+      jarakKanan = bacaJarak(TRIG_PIN_2, ECHO_PIN_2);
+      delay(JEDA_ANTAR_SENSOR);
+      jarakKiri = bacaJarak(TRIG_PIN_3, ECHO_PIN_3);
 
-        kananBebas = (jarakKanan > JARAK_AMAN);
-        kiriBebas  = (jarakKiri  > JARAK_AMAN);
+      kananBebas = (jarakKanan > JARAK_AMAN);
+      kiriBebas  = (jarakKiri  > JARAK_AMAN);
 
-        Serial.print("Mundur - Kanan: ");
-        Serial.print(jarakKanan);
-        Serial.print(" cm | Kiri: ");
-        Serial.print(jarakKiri);
-        Serial.println(" cm");
+      Serial.print("Mundur - Kanan: ");
+      Serial.print(jarakKanan);
+      Serial.print(" cm | Kiri: ");
+      Serial.print(jarakKiri);
+      Serial.println(" cm");
 
-        if (kananBebas || kiriBebas) break;
-      }
-
-      berhenti();
-      delay(300);
-
-      // Tentukan arah setelah mundur
-      if (kananBebas && kiriBebas) {
-        // Kanan & kiri sama-sama bebas -> Putar balik
-        Serial.println("Kanan & kiri bebas -> Putar balik");
-        putarBalik(PUTAR_BALIK);
-        delay(WAKTU_PUTAR_180);
-      }
-      else if (kananBebas) {
-        // Tembok kiri masih ada, kanan bebas -> Belok kanan
-        Serial.println("Tembok kiri ada -> Belok kanan");
-        belokKanan(BELOK_KANAN);
-        delay(WAKTU_BELOK_90);
-      }
-      else {
-        // Tembok kanan masih ada, kiri bebas -> Belok kiri
-        Serial.println("Tembok kanan ada -> Belok kiri");
-        belokKiri(BELOK_KIRI);
-        delay(WAKTU_BELOK_90);
-      }
-
-      berhenti();
-      delay(300);
+      if (kananBebas || kiriBebas) break;
     }
 
-    delay(JEDA_ANTAR_SENSOR);
+    berhenti();
+    delay(300);
+
+    if (kananBebas && kiriBebas) {
+      Serial.println("Kanan & kiri bebas -> Putar balik");
+      putarBalik(PUTAR_BALIK);
+      delay(WAKTU_PUTAR_180);
+    } else if (kananBebas) {
+      Serial.println("Tembok kiri ada -> Belok kanan");
+      belokKanan(BELOK_KANAN);
+      delay(WAKTU_BELOK_90);
+    } else {
+      Serial.println("Tembok kanan ada -> Belok kiri");
+      belokKiri(BELOK_KIRI);
+      delay(WAKTU_BELOK_90);
+    }
+
+    berhenti();
+    delay(300);
   }
+
+  delay(JEDA_ANTAR_SENSOR);
+}
 
   // ==========================================
   //          FUNGSI SENSOR ULTRASONIK
