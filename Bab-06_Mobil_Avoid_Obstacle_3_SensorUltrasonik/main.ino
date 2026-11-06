@@ -10,8 +10,17 @@ const int IN4 = 25; // D25 - Arah Motor Kanan
 const int ENB = 33; // D33 - PWM Kecepatan Motor Kanan
 
 // --- PIN SENSOR ULTRASONIK (HC-SR04) ---
-const int TRIG_PIN = 18; // D18
-const int ECHO_PIN = 19; // D19 (Gunakan pembagi tegangan 1kΩ & 2kΩ)
+// Pin Sensor 1 (depan)
+const int TRIG_PIN_1 = 18;
+const int ECHO_PIN_1 = 19;
+
+// Pin Sensor 2 (kanan)
+const int TRIG_PIN_2 =;
+const int ECHO_PIN_2 =;
+
+// Pin Sensor 2 (kanan)
+const int TRIG_PIN_3 =;
+const int ECHO_PIN_3 =;
 
 // --- PIN SERVO ---
 const int SERVO_PIN = 4; // D4
