@@ -1,6 +1,4 @@
-#include <ESP32Servo.h>
-
-// --- PIN MOTOR DRIVER L298N KE ESP32 ---
+// --- PIN MOTOR DRIVER L298N KE ESP32 (tidak berubah) ---
 const int ENA = 13; // D13 - PWM Kecepatan Motor Kiri
 const int IN1 = 14; // D14 - Arah Motor Kiri
 const int IN2 = 27; // D27 - Arah Motor Kiri
@@ -10,32 +8,31 @@ const int IN4 = 25; // D25 - Arah Motor Kanan
 const int ENB = 33; // D33 - PWM Kecepatan Motor Kanan
 
 // --- PIN SENSOR ULTRASONIK (HC-SR04) ---
-// Pin Sensor 1 (depan)
-const int TRIG_PIN_1 = 18;
-const int ECHO_PIN_1 = 19;
+// Semua pin ECHO pakai pembagi tegangan 1kΩ & 2kΩ
 
-// Pin Sensor 2 (kanan)
-const int TRIG_PIN_2 =;
-const int ECHO_PIN_2 =;
+// Sensor 1 (depan) - pin lama, tidak berubah
+const int TRIG_PIN_1 = 18; // D18
+const int ECHO_PIN_1 = 19; // D19
 
-// Pin Sensor 2 (kanan)
-const int TRIG_PIN_3 =;
-const int ECHO_PIN_3 =;
+// Sensor 2 (kanan) - TRIG pakai pin bekas servo
+const int TRIG_PIN_2 = 4;  // D4 (dulu SERVO_PIN)
+const int ECHO_PIN_2 = 34; // D34 (input only, pin baru)
 
-// --- PIN SERVO ---
-const int SERVO_PIN = 4; // D4
+// Sensor 3 (kiri) - pin baru
+const int TRIG_PIN_3 = 32; // D32
+const int ECHO_PIN_3 = 35; // D35 (input only, pin baru)
 
 // --- PARAMETER PENGATURAN ---
-const int JARAK_AMAN = 25;       // Batas deteksi halangan (dalam cm)
+const int JARAK_AMAN = 25;        // Batas deteksi halangan (dalam cm)
 const int WAKTU_BELOK_90 = 500;   // Durasi (ms) agar robot berbelok ~90 derajat
-const int WAKTU_PUTAR_180 = 500; // Durasi (ms) agar robot putar balik ~180 derajat
+const int WAKTU_PUTAR_180 = 500;  // Durasi (ms) agar robot putar balik ~180 derajat
+const int JEDA_ANTAR_SENSOR = 30; // Jeda (ms) antar pembacaan sensor biar gema nggak saling ganggu
 
-// --- KECEPATAN BELOK MOTOR ---
-const int BELOK_KIRI = 180; // Kecepatan motor saat berbelok (0-255)
-const int BELOK_KANAN = 180; // Kecepatan motor saat berbelok (0-255)
-const int PUTAR_BALIK = 255; // Kecepatan motor saat putar balik (0-255)
-    
-Servo myServo;
+// --- KECEPATAN MOTOR ---
+const int KECEPATAN_MAJU = 255; // Kecepatan motor saat maju (0-255)
+const int BELOK_KIRI = 180;     // Kecepatan motor saat berbelok (0-255)
+const int BELOK_KANAN = 180;    // Kecepatan motor saat berbelok (0-255)
+const int PUTAR_BALIK = 255;    // Kecepatan motor saat putar balik (0-255)
 
 void setup() {
   Serial.begin(115200);
@@ -49,99 +46,85 @@ void setup() {
   pinMode(ENB, OUTPUT);
 
   // Konfigurasi pin sensor ultrasonik
-  pinMode(TRIG_PIN, OUTPUT);
-  pinMode(ECHO_PIN, INPUT);
-
-  // Inisialisasi Servo ke posisi depan (90 derajat)
-  myServo.attach(SERVO_PIN);
-  myServo.write(90);
+  pinMode(TRIG_PIN_1, OUTPUT);
+  pinMode(ECHO_PIN_1, INPUT);
+  pinMode(TRIG_PIN_2, OUTPUT);
+  pinMode(ECHO_PIN_2, INPUT);
+  pinMode(TRIG_PIN_3, OUTPUT);
+  pinMode(ECHO_PIN_3, INPUT);
 
   berhenti();
   delay(2000); // Jeda awal 2 detik sebelum mobil bergerak
 }
 
 void loop() {
-  // Pastikan servo selalu menghadap ke depan saat bergerak
-  myServo.write(90);
-  
-  int jarakDepan = bacaJarak();
+  int jarakDepan = bacaJarak(TRIG_PIN_1, ECHO_PIN_1);
   Serial.print("Jarak Depan: ");
   Serial.print(jarakDepan);
   Serial.println(" cm");
 
   if (jarakDepan > JARAK_AMAN) {
     // Jalur depan aman -> Mobil otomatis maju
-    maju(255);
+    maju(KECEPATAN_MAJU);
   } else {
     // 1. ADA HALANGAN DI DEPAN -> Mobil Berhenti
     berhenti();
     delay(300);
 
-    // 2. Servo tengok ke kanan (0 derajat)
-    myServo.write(0);
-    delay(500); // Beri waktu servo berputar
-    int jarakKanan = bacaJarak();
+    // 2. Baca sensor kanan dan kiri (tanpa servo, langsung baca)
+    delay(JEDA_ANTAR_SENSOR);
+    int jarakKanan = bacaJarak(TRIG_PIN_2, ECHO_PIN_2);
+    delay(JEDA_ANTAR_SENSOR);
+    int jarakKiri = bacaJarak(TRIG_PIN_3, ECHO_PIN_3);
+
     Serial.print("Jarak Kanan: ");
     Serial.print(jarakKanan);
     Serial.println(" cm");
+    Serial.print("Jarak Kiri: ");
+    Serial.print(jarakKiri);
+    Serial.println(" cm");
 
     if (jarakKanan > JARAK_AMAN) {
-      // Kanan Aman -> Belok Kanan lalu Servo kembali ke Depan (90)
+      // Kanan aman -> Belok Kanan
       belokKanan(BELOK_KANAN);
       delay(WAKTU_BELOK_90);
       berhenti();
-
-      myServo.write(90);
       delay(300);
-    } 
+    }
+    else if (jarakKiri > JARAK_AMAN) {
+      // Kiri aman -> Belok Kiri
+      belokKiri(BELOK_KIRI);
+      delay(WAKTU_BELOK_90);
+      berhenti();
+      delay(300);
+    }
     else {
-      // 3. Kanan Ada Halangan -> Servo tengok ke kiri (180 derajat)
-      myServo.write(180);
-      delay(500);
-      int jarakKiri = bacaJarak();
-      Serial.print("Jarak Kiri: ");
-      Serial.print(jarakKiri);
-      Serial.println(" cm");
+      // 3. Kanan & Kiri terhalang -> Putar Balik
+      putarBalik(PUTAR_BALIK);
+      delay(WAKTU_PUTAR_180);
+      berhenti();
+      delay(300);
 
-      if (jarakKiri > JARAK_AMAN) {
-        // Kiri Aman -> Belok Kiri lalu Servo kembali ke Depan (90)
-        belokKiri(BELOK_KIRI);
-        delay(WAKTU_BELOK_90);
-        berhenti();
-
-        myServo.write(90);
-        delay(300);
-      } 
-      else {
-        // 4. Kanan & Kiri Terhalang -> Putar Balik
-        myServo.write(90); // Servo kembali menghadap depan
-        delay(300);
-
-        putarBalik(PUTAR_BALIK);
-        delay(WAKTU_PUTAR_180);
-        berhenti();
-        delay(300);
-
-        // Setelah putar balik, loop() otomatis akan mengukur jarak depan lagi.
-        // Jika depan aman -> Maju. Jika masih ada halangan -> Ulangi siklus pengecekan.
-      }
+      // Setelah putar balik, loop() otomatis mengukur jarak depan lagi.
     }
   }
+
+  delay(JEDA_ANTAR_SENSOR);
 }
 
 // ==========================================
 //          FUNGSI SENSOR ULTRASONIK
 // ==========================================
-int bacaJarak() {
-  digitalWrite(TRIG_PIN, LOW);
+int bacaJarak(int trigPin, int echoPin) {
+  digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
-  digitalWrite(TRIG_PIN, HIGH);
+  digitalWrite(trigPin, HIGH);
   delayMicroseconds(10);
-  digitalWrite(TRIG_PIN, LOW);
+  digitalWrite(trigPin, LOW);
 
   // Menerima pantulan gelombang (timeout 30ms ~ 5 meter)
-  long durasi = pulseIn(ECHO_PIN, HIGH, 30000); 
-  
+  long durasi = pulseIn(echoPin, HIGH, 30000);
+
   if (durasi == 0) {
     return 400; // Jika tidak ada pantulan, anggap jarak sangat jauh
   }
