@@ -19,8 +19,8 @@ const bool GARIS_TERBACA_HIGH = true;
 
 // --- KECEPATAN MOTOR (0-255, negatif = mundur) ---
 const int KECEPATAN_MAJU   = 150; // Kecepatan lurus
-const int BELOK_LUAR       = 170; // Motor sisi luar saat belok
-const int BELOK_DALAM      = -80; // Motor sisi dalam saat belok (negatif = mundur biar tajam)
+const int BELOK_LUAR       = 150; // Motor sisi luar saat belok
+const int BELOK_DALAM      = 0; // Motor sisi dalam saat belok (negatif = mundur biar tajam)
 
 const bool DEBUG = false; // true = tampilkan status sensor di Serial Monitor
 
