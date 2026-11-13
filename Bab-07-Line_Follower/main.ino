@@ -8,9 +8,9 @@ const int IN4 = 25; // D25 - Arah Motor Kanan
 const int ENB = 33; // D33 - PWM Kecepatan Motor Kanan
 
 // --- PIN SENSOR GARIS ---
-const int SENSOR_KIRI   = 34; // D34 - Sensor Kiri (input only)
+const int SENSOR_KIRI   = 23; // D23
+const int SENSOR_KANAN  = 22; // D22
 // const int SENSOR_TENGAH = 35; // D35 - Sensor Tengah (input only)
-const int SENSOR_KANAN  = 32; // D32 - Sensor Kanan
 
 // --- PENGATURAN SENSOR ---
 // true  = sensor membaca HIGH saat di atas garis
