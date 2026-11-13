@@ -1,0 +1,3 @@
+Sensor Garis
+Lampu Mati = Mendeteksi Warna Hitam
+Lampu Nyala = Mendeteksi Warna Putih
