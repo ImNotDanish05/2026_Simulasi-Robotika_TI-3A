@@ -23,7 +23,7 @@ void setup() {
 
   // Sensor
   pinMode(SENSOR_KIRI, INPUT);
-  pinMode(SENSOR_TENGAH, INPUT);
+  // pinMode(SENSOR_TENGAH, INPUT);
   pinMode(SENSOR_KANAN, INPUT);
 
   Serial.begin(115200);
