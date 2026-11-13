@@ -8,8 +8,8 @@ const int IN4 = 25; // D25 - Arah Motor Kanan
 const int ENB = 33; // D33 - PWM Kecepatan Motor Kanan
 
 // --- PIN SENSOR GARIS ---
-const int SENSOR_KIRI   = 23; // D23
-const int SENSOR_KANAN  = 22; // D22
+const int SENSOR_KIRI   = 22; // D22
+const int SENSOR_KANAN  = 23; // D23
 // const int SENSOR_TENGAH = 35; // D35 - Sensor Tengah (input only)
 
 // --- PENGATURAN SENSOR ---
