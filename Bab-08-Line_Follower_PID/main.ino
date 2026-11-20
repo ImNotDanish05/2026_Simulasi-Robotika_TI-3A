@@ -1,172 +1,163 @@
+// Pin sensor
+const int SENSOR_KIRI   = 22;
+const int SENSOR_TENGAH = 18;
+const int SENSOR_KANAN  = 23;
+
 // --- PIN MOTOR DRIVER L298N KE ESP32 ---
-const int ENA = 13; // D13 - PWM Kecepatan Motor Kiri
-const int IN1 = 14; // D14 - Arah Motor Kiri
-const int IN2 = 27; // D27 - Arah Motor Kiri
+const int ENA = 13; // PWM Kecepatan Motor Kiri
+const int IN1 = 14; // Arah Motor Kiri
+const int IN2 = 27; // Arah Motor Kiri
 
-const int IN3 = 26; // D26 - Arah Motor Kanan
-const int IN4 = 25; // D25 - Arah Motor Kanan
-const int ENB = 33; // D33 - PWM Kecepatan Motor Kanan
+const int IN3 = 26; // Arah Motor Kanan
+const int IN4 = 25; // Arah Motor Kanan
+const int ENB = 33; // PWM Kecepatan Motor Kanan
 
-// --- PIN SENSOR GARIS (dipasang di DEPAN) ---
-// Susunan: [KIRI] [TENGAH] [KANAN]
-// Sensor TENGAH harus berada di atas garis, KIRI & KANAN di tepi garis.
-const int SENSOR_KIRI   = 22; // D22
-const int SENSOR_TENGAH = 18; // D21 - pin bebas, tidak bentrok dengan ultrasonik
-const int SENSOR_KANAN  = 23; // D23
+// --- PENGATURAN PWM ESP32 ---
+const int PWM_FREQ = 1000;
+const int PWM_RES  = 10;   // 0 - 1023
+const int PWM_MAX  = 1023;
 
-// --- PENGATURAN SENSOR ---
-// true  = sensor membaca HIGH saat di atas garis
-// false = sensor membaca LOW saat di atas garis
-// (berlaku untuk ketiga sensor, pastikan modulnya sama semua)
-const bool GARIS_TERBACA_HIGH = true;
+// --- KONSTANTA PID ---
+float Kp = 250.0;
+float Ki = 1;
+float Kd = 600.0;
 
-// --- PENGATURAN KECEPATAN ---
-const int BASE_SPEED = 150;  // Kecepatan lurus
-const int MAX_SPEED  = 200;  // Batas atas PWM tiap motor
-const int MIN_SPEED  = 0;    // Batas bawah (0 = motor dalam berhenti)
-                             // Isi negatif (misal -80) kalau mau motor dalam mundur
-                             // supaya belokan tajam lebih cepat
+// --- PENGATURAN KECEPATAN (0 - 1023) ---
+int baseSpeed = 560;
+int maxSpeed  = 1023;
+int turnSpeed = 800;  // Kecepatan saat putar balik
 
-// --- PARAMETER PID ---
-float Kp = 70;    // Koreksi dasar (turun dari 100 karena error sekarang lebih halus)
-float Ki = 1;     // Koreksi bertambah selama garis masih menyimpang (kecil saja)
-float Kd = 30;    // Peredam overshoot
+// Ubah ke LOW jika sensor mengeluarkan logika 0 saat mendeteksi garis hitam
+const int GARIS = HIGH;
 
-const float INTEGRAL_MAX = 30;       // Batas integral (anti-windup)
-const unsigned long LOOP_MS = 10;    // Loop tetap 10 ms supaya I & D konsisten
-
-// Error buatan saat garis hilang (000). Lebih besar dari 1 supaya belokan lebih agresif.
-const float ERROR_HILANG = 1.5;
-
-const bool DEBUG = false; // true = tampilkan status di Serial Monitor
-
-// --- VARIABEL PID ---
-float error      = 0;
-float lastError  = 0;
-float integral   = 0;
-int   arahTerakhir = 0;   // -1 = garis terakhir terlihat di kiri, +1 = di kanan
-unsigned long lastTime = 0;
+// Variabel perhitungan PID
+int error = 0;
+int lastError = 0;
+int integral = 0;
+int lastKnownDirection = 0;
 
 void setup() {
   Serial.begin(115200);
 
-  // Motor
-  pinMode(ENA, OUTPUT);
-  pinMode(IN1, OUTPUT);
-  pinMode(IN2, OUTPUT);
-  pinMode(IN3, OUTPUT);
-  pinMode(IN4, OUTPUT);
-  pinMode(ENB, OUTPUT);
-
-  // Sensor
   pinMode(SENSOR_KIRI, INPUT);
   pinMode(SENSOR_TENGAH, INPUT);
   pinMode(SENSOR_KANAN, INPUT);
 
-  berhenti();
-  delay(2000); // Jeda awal 2 detik sebelum robot bergerak
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  pinMode(IN3, OUTPUT);
+  pinMode(IN4, OUTPUT);
+
+  ledcAttach(ENA, PWM_FREQ, PWM_RES);
+  ledcAttach(ENB, PWM_FREQ, PWM_RES);
+
+  setMotor(0, 0);
+  delay(2000);
 }
 
 void loop() {
-  // Jalankan tiap LOOP_MS saja
-  if (millis() - lastTime < LOOP_MS) return;
-  lastTime = millis();
+  // 1. Baca sensor
+  int sKiri   = (digitalRead(SENSOR_KIRI)   == GARIS) ? 1 : 0;
+  int sTengah = (digitalRead(SENSOR_TENGAH) == GARIS) ? 1 : 0;
+  int sKanan  = (digitalRead(SENSOR_KANAN)  == GARIS) ? 1 : 0;
 
-  bool k  = terdeteksiGaris(SENSOR_KIRI);
-  bool t  = terdeteksiGaris(SENSOR_TENGAH);
-  bool ka = terdeteksiGaris(SENSOR_KANAN);
-
-  int jumlah = k + t + ka;
-
-  // Error (rata-rata berbobot -1, 0, +1):
-  //  K T Ka
-  //  1 0 0 -> -1    (garis jauh di kiri)
-  //  1 1 0 -> -0.5
-  //  0 1 0 ->  0    (pas di tengah)
-  //  0 1 1 -> +0.5
-  //  0 0 1 -> +1    (garis jauh di kanan)
-  //  1 1 1 / 1 0 1 -> 0 (persimpangan / garis tebal -> lurus)
-  //  0 0 0 -> garis hilang, pakai arah terakhir
-  if (jumlah == 0) {
-    error = arahTerakhir * ERROR_HILANG;
-  } else {
-    error = (float)(ka - k) / jumlah;
-    if (error != 0) {
-      arahTerakhir = (error > 0) ? 1 : -1;
-    }
+  // --- KONDISI KHUSUS: KETIGA SENSOR DETEKSI HITAM ---
+  if (sKiri == 1 && sTengah == 1 && sKanan == 1) {
+    putarBalik();
+    return; // Langsung ulangi loop() dari awal setelah putar balik selesai
   }
 
-  // --- Integral (reset kalau sudah di tengah) ---
-  if (error == 0) {
-    integral = 0;
-  } else {
-    integral += error;
-    integral = constrain(integral, -INTEGRAL_MAX, INTEGRAL_MAX);
+  // 2. Konversi sensor menjadi error
+  if (sKiri == 1 && sTengah == 0 && sKanan == 0) {
+    error = -2;
+    lastKnownDirection = -1;
+  } else if (sKiri == 1 && sTengah == 1 && sKanan == 0) {
+    error = -1;
+    lastKnownDirection = -1;
+  } else if (sKiri == 0 && sTengah == 1 && sKanan == 0) {
+    error = 0;
+  } else if (sKiri == 0 && sTengah == 1 && sKanan == 1) {
+    error = 1;
+    lastKnownDirection = 1;
+  } else if (sKiri == 0 && sTengah == 0 && sKanan == 1) {
+    error = 2;
+    lastKnownDirection = 1;
+  } else if (sKiri == 0 && sTengah == 0 && sKanan == 0) {
+    if (lastKnownDirection == -1)      error = -3;
+    else if (lastKnownDirection == 1)  error = 3;
   }
 
-  // --- Derivative ---
-  float derivative = error - lastError;
+  // 3. Kalkulasi PID
+  integral += error;
+  integral = constrain(integral, -100, 100);
+  int derivative = error - lastError;
+
+  float pidValue = (Kp * error) + (Ki * integral) + (Kd * derivative);
   lastError = error;
 
-  // --- Output PID ---
-  // output positif = belok kanan, negatif = belok kiri
-  float output = (Kp * error) + (Ki * integral) + (Kd * derivative);
+  // 4. Kecepatan tiap motor
+  int leftMotorSpeed  = baseSpeed + pidValue;
+  int rightMotorSpeed = baseSpeed - pidValue;
 
-  // Belok kanan -> motor kiri lebih cepat, motor kanan lebih lambat
-  int kecKiri  = constrain((int)(BASE_SPEED + output), MIN_SPEED, MAX_SPEED);
-  int kecKanan = constrain((int)(BASE_SPEED - output), MIN_SPEED, MAX_SPEED);
+  leftMotorSpeed  = constrain(leftMotorSpeed,  -maxSpeed, maxSpeed);
+  rightMotorSpeed = constrain(rightMotorSpeed, -maxSpeed, maxSpeed);
 
-  gerak(kecKiri, kecKanan);
+  // 5. Gerakkan motor
+  setMotor(leftMotorSpeed, rightMotorSpeed);
 
-  if (DEBUG) {
-    Serial.printf("K:%d T:%d Ka:%d | err:%.2f int:%.1f out:%.1f | L:%d R:%d\n",
-                  k, t, ka, error, integral, output, kecKiri, kecKanan);
+  delay(10);
+}
+
+// Fungsi manuver berhenti dan putar balik 180 derajat
+void putarBalik() {
+  // 1. Berhenti sejenak
+  setMotor(0, 0);
+  delay(400);
+
+  // 2. Mulai berputar di tempat (motor kiri maju, motor kanan mundur = putar kanan)
+  // Jika ingin putar ke kiri, ubah menjadi setMotor(-turnSpeed, turnSpeed);
+  setMotor(turnSpeed, -turnSpeed);
+
+  // 3. Delay singkat agar sensor tengah keluar dari garis hitam yang sekarang
+  // SESUAIKAN nilai delay ini jika robot langsung berhenti berputar sebelum berbalik arah
+  delay(250);
+
+  // 4. Terus berputar sampai sensor tengah kembali menemukan garis hitam
+  while (digitalRead(SENSOR_TENGAH) != GARIS) {
+    delay(5);
   }
+
+  // 5. Rem sebentar untuk meredam momentum putaran agar tidak bablas
+  setMotor(-turnSpeed / 2, turnSpeed / 2);
+  delay(50);
+  setMotor(0, 0);
+  delay(200);
+
+  // 6. Reset memori PID agar tidak kaget saat mulai jalan lagi
+  error = 0;
+  lastError = 0;
+  integral = 0;
+  lastKnownDirection = 0;
 }
 
-// ==========================================
-//            FUNGSI SENSOR GARIS
-// ==========================================
-bool terdeteksiGaris(int pin) {
-  int nilai = digitalRead(pin);
-  return GARIS_TERBACA_HIGH ? (nilai == HIGH) : (nilai == LOW);
-}
-
-// ==========================================
-//            FUNGSI KONTROL MOTOR
-// ==========================================
-// kecepatan: -255 s/d 255 (positif = maju, negatif = mundur, 0 = berhenti)
-void gerak(int kiri, int kanan) {
-  kiri  = constrain(kiri, -255, 255);
-  kanan = constrain(kanan, -255, 255);
-
-  // Motor kiri
-  if (kiri > 0) {
+void setMotor(int speedKiri, int speedKanan) {
+  // Motor Kiri
+  if (speedKiri >= 0) {
     digitalWrite(IN1, HIGH);
     digitalWrite(IN2, LOW);
-  } else if (kiri < 0) {
+  } else {
     digitalWrite(IN1, LOW);
     digitalWrite(IN2, HIGH);
-  } else {
-    digitalWrite(IN1, LOW);
-    digitalWrite(IN2, LOW);
   }
-  analogWrite(ENA, abs(kiri));
+  ledcWrite(ENA, constrain(abs(speedKiri), 0, PWM_MAX));
 
-  // Motor kanan
-  if (kanan > 0) {
+  // Motor Kanan
+  if (speedKanan >= 0) {
     digitalWrite(IN3, HIGH);
     digitalWrite(IN4, LOW);
-  } else if (kanan < 0) {
-    digitalWrite(IN3, LOW);
-    digitalWrite(IN4, HIGH);
   } else {
     digitalWrite(IN3, LOW);
-    digitalWrite(IN4, LOW);
+    digitalWrite(IN4, HIGH);
   }
-  analogWrite(ENB, abs(kanan));
-}
-
-void berhenti() {
-  gerak(0, 0);
+  ledcWrite(ENB, constrain(abs(speedKanan), 0, PWM_MAX));
 }
