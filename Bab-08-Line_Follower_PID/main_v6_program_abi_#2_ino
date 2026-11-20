@@ -1,0 +1,138 @@
+// Pin sensor
+const int SENSOR_KIRI   = 22;
+const int SENSOR_TENGAH = 18;
+const int SENSOR_KANAN  = 23;
+
+// --- PIN MOTOR DRIVER L298N KE ESP32 ---
+const int ENA = 13; // D13 - PWM Kecepatan Motor Kiri
+const int IN1 = 14; // D14 - Arah Motor Kiri
+const int IN2 = 27; // D27 - Arah Motor Kiri
+
+const int IN3 = 26; // D26 - Arah Motor Kanan
+const int IN4 = 25; // D25 - Arah Motor Kanan
+const int ENB = 33; // D33 - PWM Kecepatan Motor Kanan
+
+// --- KONSTANTA PID ---
+float Kp = 80.0;    // Proportional: Kecepatan respon terhadap belokan
+float Ki = 0.5;     // Integral: Koreksi akumulasi error kecil
+float Kd = 100.0;  // Derivative: Peredam osilasi/goyangan berlebih
+
+// --- PENGATURAN KECEPATAN & KALIBRASI MOTOR ---
+int baseSpeed = 140; // Kecepatan dasar robot (0 - 255)
+int maxSpeed  = 255; // Dinaikkan ke 255 agar motor kanan bisa mencapai torsi maksimalnya
+
+// Rasio kalibrasi berdasarkan hasil tes (240 / 255 = 0.941)
+const float RASIO_KIRI  = 200.0 / 255.0; 
+const float RASIO_KANAN = 1.0;
+
+// Ubah ke LOW jika sensor mengeluarkan logika 0 saat mendeteksi garis hitam
+const int GARIS = HIGH; 
+
+// Variabel perhitungan PID
+int error = 0;
+int lastError = 0;
+int integral = 0;
+int lastKnownDirection = 0; // Menyimpan arah belok terakhir jika keluar jalur
+
+void setup() {
+  Serial.begin(115200);
+
+  // Set pin sensor sebagai INPUT
+  pinMode(SENSOR_KIRI, INPUT);
+  pinMode(SENSOR_TENGAH, INPUT);
+  pinMode(SENSOR_KANAN, INPUT);
+
+  // Set pin motor sebagai OUTPUT
+  pinMode(ENA, OUTPUT);
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  pinMode(IN3, OUTPUT);
+  pinMode(IN4, OUTPUT);
+  pinMode(ENB, OUTPUT);
+
+  delay(2000); // Jeda 2 detik sebelum robot mulai berjalan
+}
+
+void loop() {
+  // 1. Baca status ketiga sensor
+  int sKiri   = (digitalRead(SENSOR_KIRI) == GARIS) ? 1 : 0;
+  int sTengah = (digitalRead(SENSOR_TENGAH) == GARIS) ? 1 : 0;
+  int sKanan  = (digitalRead(SENSOR_KANAN) == GARIS) ? 1 : 0;
+
+  // 2. Konversi kombinasi sensor menjadi nilai Error (-2 s/d +2)
+  if (sKiri == 1 && sTengah == 0 && sKanan == 0) {
+    error = -2;
+    lastKnownDirection = -1;
+  } else if (sKiri == 1 && sTengah == 1 && sKanan == 0) {
+    error = -1;
+    lastKnownDirection = -1;
+  } else if (sKiri == 0 && sTengah == 1 && sKanan == 0) {
+    error = 0;
+  } else if (sKiri == 0 && sTengah == 1 && sKanan == 1) {
+    error = 1;
+    lastKnownDirection = 1;
+  } else if (sKiri == 0 && sTengah == 0 && sKanan == 1) {
+    error = 2;
+    lastKnownDirection = 1;
+  } else if (sKiri == 1 && sTengah == 1 && sKanan == 1) {
+    // Mendeteksi perempatan atau garis start/finish -> jalan lurus
+    error = 0;
+  } else if (sKiri == 0 && sTengah == 0 && sKanan == 0) {
+    // Robot keluar garis: gunakan arah terakhir untuk mencari garis kembali
+    if (lastKnownDirection == -1) {
+      error = -3;
+    } else if (lastKnownDirection == 1) {
+      error = 3;
+    }
+  }
+
+  // 3. Kalkulasi PID
+  int proportional = error;
+  integral += error;
+  integral = constrain(integral, -100, 100); // Cegah integral windup
+  int derivative = error - lastError;
+
+  float pidValue = (Kp * proportional) + (Ki * integral) + (Kd * derivative);
+  lastError = error;
+
+  // 4. Hitung kecepatan masing-masing motor dengan kompensasi kalibrasi
+  int baseKiri  = baseSpeed * RASIO_KIRI;
+  int baseKanan = baseSpeed * RASIO_KANAN;
+
+  int leftMotorSpeed  = baseKiri + pidValue;
+  int rightMotorSpeed = baseKanan - pidValue;
+
+  // Batasi kecepatan agar tetap berada dalam rentang PWM valid & proporsional
+  leftMotorSpeed  = constrain(leftMotorSpeed, -(int)(maxSpeed * RASIO_KIRI), (int)(maxSpeed * RASIO_KIRI));
+  rightMotorSpeed = constrain(rightMotorSpeed, -(int)(maxSpeed * RASIO_KANAN), (int)(maxSpeed * RASIO_KANAN));
+
+  // 5. Gerakkan motor
+  setMotor(leftMotorSpeed, rightMotorSpeed);
+
+  delay(10); // Siklus loop 10ms agar kalkulasi Derivative stabil
+}
+
+// Fungsi kontrol arah & kecepatan motor
+void setMotor(int speedKiri, int speedKanan) {
+  // Kontrol Motor Kiri
+  if (speedKiri >= 0) {
+    digitalWrite(IN1, HIGH);
+    digitalWrite(IN2, LOW);
+    analogWrite(ENA, speedKiri);
+  } else {
+    digitalWrite(IN1, LOW);
+    digitalWrite(IN2, HIGH);
+    analogWrite(ENA, abs(speedKiri));
+  }
+
+  // Kontrol Motor Kanan
+  if (speedKanan >= 0) {
+    digitalWrite(IN3, HIGH);
+    digitalWrite(IN4, LOW);
+    analogWrite(ENB, speedKanan);
+  } else {
+    digitalWrite(IN3, LOW);
+    digitalWrite(IN4, HIGH);
+    analogWrite(ENB, abs(speedKanan));
+  }
+}
