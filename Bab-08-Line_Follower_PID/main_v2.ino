@@ -7,34 +7,46 @@ const int IN3 = 26; // D26 - Arah Motor Kanan
 const int IN4 = 25; // D25 - Arah Motor Kanan
 const int ENB = 33; // D33 - PWM Kecepatan Motor Kanan
 
-// --- PIN SENSOR GARIS ---
-const int SENSOR_KIRI  = 22; // D22
-const int SENSOR_KANAN = 23; // D23
+// --- PIN SENSOR GARIS (dipasang di DEPAN) ---
+// Susunan: [KIRI] [TENGAH] [KANAN]
+// Sensor TENGAH harus berada di atas garis, KIRI & KANAN di tepi garis.
+const int SENSOR_KIRI   = 22; // D22
+const int SENSOR_TENGAH = 21; // D21 - pin bebas, tidak bentrok dengan ultrasonik
+const int SENSOR_KANAN  = 23; // D23
 
 // --- PENGATURAN SENSOR ---
 // true  = sensor membaca HIGH saat di atas garis
 // false = sensor membaca LOW saat di atas garis
+// (berlaku untuk ketiga sensor, pastikan modulnya sama semua)
 const bool GARIS_TERBACA_HIGH = true;
 
-// --- PENGATURAN KECEPATAN ---
-const int BASE_SPEED = 150;  // Kecepatan lurus
-const int MAX_SPEED  = 200;  // Batas atas PWM tiap motor
-const int MIN_SPEED  = 0;    // Batas bawah (0 = motor dalam berhenti, tidak mundur)
+// --- KECEPATAN MOTOR (0-255, negatif = mundur) ---
+// Sama persis dengan versi if yang sudah berhasil.
+const int KECEPATAN_MAJU = 150; // Kecepatan lurus
+const int BELOK_LUAR     = 150; // Batas atas tiap motor (motor sisi luar saat belok)
+const int BELOK_DALAM    = 0;   // Batas bawah tiap motor (motor sisi dalam saat belok)
+                                // negatif = mundur biar belokan lebih tajam
 
 // --- PARAMETER PID ---
-float Kp = 100;   // Koreksi dasar
-float Ki = 3;     // Koreksi bertambah selama garis masih menyimpang
+// Kp dihitung supaya saat error = ±1 hasilnya sama dengan versi if:
+// motor dalam = KECEPATAN_MAJU - Kp*1 = BELOK_DALAM  ->  Kp = 150 - 0 = 150
+float Kp = KECEPATAN_MAJU - BELOK_DALAM;   // = 150
+float Ki = 1;     // Koreksi bertambah selama garis masih menyimpang (kecil saja)
 float Kd = 30;    // Peredam overshoot
 
 const float INTEGRAL_MAX = 30;       // Batas integral (anti-windup)
 const unsigned long LOOP_MS = 10;    // Loop tetap 10 ms supaya I & D konsisten
 
+// Error buatan saat garis hilang (000). Lebih besar dari 1 supaya belokan lebih agresif.
+const float ERROR_HILANG = 1.5;
+
 const bool DEBUG = false; // true = tampilkan status di Serial Monitor
 
 // --- VARIABEL PID ---
-float error     = 0;
-float lastError = 0;
-float integral  = 0;
+float error      = 0;
+float lastError  = 0;
+float integral   = 0;
+int   arahTerakhir = 0;   // -1 = garis terakhir terlihat di kiri, +1 = di kanan
 unsigned long lastTime = 0;
 
 void setup() {
@@ -50,6 +62,7 @@ void setup() {
 
   // Sensor
   pinMode(SENSOR_KIRI, INPUT);
+  pinMode(SENSOR_TENGAH, INPUT);
   pinMode(SENSOR_KANAN, INPUT);
 
   berhenti();
@@ -61,14 +74,29 @@ void loop() {
   if (millis() - lastTime < LOOP_MS) return;
   lastTime = millis();
 
-  bool kiriGaris  = terdeteksiGaris(SENSOR_KIRI);
-  bool kananGaris = terdeteksiGaris(SENSOR_KANAN);
+  bool k  = terdeteksiGaris(SENSOR_KIRI);
+  bool t  = terdeteksiGaris(SENSOR_TENGAH);
+  bool ka = terdeteksiGaris(SENSOR_KANAN);
 
-  // Error:
-  //  -1 = sensor kiri kena garis  -> belok kiri
-  //   0 = tengah / dua-duanya kena (persimpangan) -> lurus
-  //  +1 = sensor kanan kena garis -> belok kanan
-  error = (float)kananGaris - (float)kiriGaris;
+  int jumlah = k + t + ka;
+
+  // Error (rata-rata berbobot -1, 0, +1):
+  //  K T Ka
+  //  1 0 0 -> -1    (garis jauh di kiri)
+  //  1 1 0 -> -0.5
+  //  0 1 0 ->  0    (pas di tengah)
+  //  0 1 1 -> +0.5
+  //  0 0 1 -> +1    (garis jauh di kanan)
+  //  1 1 1 / 1 0 1 -> 0 (persimpangan / garis tebal -> lurus)
+  //  0 0 0 -> garis hilang, pakai arah terakhir
+  if (jumlah == 0) {
+    error = arahTerakhir * ERROR_HILANG;
+  } else {
+    error = (float)(ka - k) / jumlah;
+    if (error != 0) {
+      arahTerakhir = (error > 0) ? 1 : -1;
+    }
+  }
 
   // --- Integral (reset kalau sudah di tengah) ---
   if (error == 0) {
@@ -87,14 +115,14 @@ void loop() {
   float output = (Kp * error) + (Ki * integral) + (Kd * derivative);
 
   // Belok kanan -> motor kiri lebih cepat, motor kanan lebih lambat
-  int kecKiri  = constrain((int)(BASE_SPEED + output), MIN_SPEED, MAX_SPEED);
-  int kecKanan = constrain((int)(BASE_SPEED - output), MIN_SPEED, MAX_SPEED);
+  int kecKiri  = constrain((int)(KECEPATAN_MAJU + output), BELOK_DALAM, BELOK_LUAR);
+  int kecKanan = constrain((int)(KECEPATAN_MAJU - output), BELOK_DALAM, BELOK_LUAR);
 
   gerak(kecKiri, kecKanan);
 
   if (DEBUG) {
-    Serial.printf("Kiri:%d Kanan:%d | err:%.1f int:%.1f out:%.1f | L:%d R:%d\n",
-                  kiriGaris, kananGaris, error, integral, output, kecKiri, kecKanan);
+    Serial.printf("K:%d T:%d Ka:%d | err:%.2f int:%.1f out:%.1f | L:%d R:%d\n",
+                  k, t, ka, error, integral, output, kecKiri, kecKanan);
   }
 }
 
