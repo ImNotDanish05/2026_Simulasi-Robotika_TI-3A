@@ -4,7 +4,7 @@
 
 // Pin sensor
 const int SENSOR_KIRI   = 22;
-const int SENSOR_TENGAH = 21;
+const int SENSOR_TENGAH = 18;
 const int SENSOR_KANAN  = 23;
 
 // true  = garis terdeteksi saat HIGH

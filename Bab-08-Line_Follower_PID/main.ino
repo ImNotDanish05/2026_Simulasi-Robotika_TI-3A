@@ -11,7 +11,7 @@ const int ENB = 33; // D33 - PWM Kecepatan Motor Kanan
 // Susunan: [KIRI] [TENGAH] [KANAN]
 // Sensor TENGAH harus berada di atas garis, KIRI & KANAN di tepi garis.
 const int SENSOR_KIRI   = 22; // D22
-const int SENSOR_TENGAH = 21; // D21 - pin bebas, tidak bentrok dengan ultrasonik
+const int SENSOR_TENGAH = 18; // D21 - pin bebas, tidak bentrok dengan ultrasonik
 const int SENSOR_KANAN  = 23; // D23
 
 // --- PENGATURAN SENSOR ---
