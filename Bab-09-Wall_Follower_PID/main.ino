@@ -20,19 +20,32 @@ const int PWM_RES  = 10;   // 0 - 1023
 const int PWM_MAX  = 1023;
 
 // --- KONSTANTA PID SUSUR DINDING KIRI ---
-float Kp = 25.0;
+float Kp = 20.0; // 30 
 float Ki = 0.0;
-float Kd = 40.0;
+float Kd = 200.0; //150
 
-// --- PENGATURAN KECEPATAN & JARAK (CM) ---
-int baseSpeed    = 560;
-int maxSpeed     = 1023;
-int turnSpeed    = 700;
-int advanceSpeed = 480; // Kecepatan pelan saat maju memposisikan bodi sebelum berhenti
+// --- PENGATURAN KECEPATAN & DURASI BELOK ---
+int baseSpeed        = 500;
+int maxSpeed         = 1023;
 
-const float BATAS_DEPAN       = 18.0; // Dinaikkan sedikit (cm) agar aman saat maju sedikit sebelum stop
-const float BATAS_KIRI_ADA    = 25.0; // Jarak maksimal (cm) dinding kiri dianggap masih ada
-const float JARAK_TARGET_KIRI = 12.0; // Jarak ideal (cm) robot dari dinding kiri saat lurus
+// Pengaturan belok kiri otomatis via PID
+int minPidLeftSpeed       = 350;   // Kecepatan minimal roda kiri saat PID belok kiri
+const float MAX_JARAK_PID = 30.0; // Batas maksimal jarak kiri yang dihitung PID
+
+// Pengaturan manuver putar saat depan terhalang
+int preTurnSpeed     = 350;
+int preTurnRightMs   = 0;
+
+int turnLeftSpeed    = 250; // Kecepatan putar kiri saat depan mentok & kiri kosong (400)
+int turnLeftMs       = 600; // 300
+
+int turnRightSpeed   = 400; // Kecepatan putar kanan saat depan mentok & kiri ada dinding
+int turnRightMs      = 300;
+
+// --- BATAS JARAK (CM) ---
+const float BATAS_DEPAN       = 18.0;
+const float BATAS_KIRI_ADA    = 30.0;
+const float JARAK_TARGET_KIRI = 15.0;
 
 // Variabel PID
 float error = 0;
@@ -62,48 +75,22 @@ void setup() {
 void loop() {
   // 1. Baca jarak kedua sensor (dalam cm)
   float jarakDepan = bacaUltrasonik(TRIG_DEPAN, ECHO_DEPAN);
-  delay(10); // Jeda singkat mencegah interferensi gelombang suara antar sensor
+  delay(10);
   float jarakKiri  = bacaUltrasonik(TRIG_KIRI, ECHO_KIRI);
 
   // --- KONDISI 1: SENSOR DEPAN MENDETEKSI OBSTACLE ---
-  if (jarakDepan <= BATAS_DEPAN) {
-    // Maju sedikit dengan pelan untuk memposisikan robot sebelum berhenti
-    // Sesuaikan delay(120) dan BATAS_DEPAN agar hidung robot tidak menyentuh tembok depan
-    setMotor(advanceSpeed, advanceSpeed);
-    delay(120);
-
-    // Berhenti sebelum belok
-    setMotor(0, 0);
-    delay(200);
-
-    // Cek sensor kiri apakah ada obstacle
+  if (jarakDepan < BATAS_DEPAN) {
     if (jarakKiri <= BATAS_KIRI_ADA) {
-      belokKanan();
+      belok90Kanan();
     } else {
-      belokKiri();
+      belokKiriDepanMentok();
     }
-    resetPID();
     return;
   }
 
-  // --- KONDISI 2: SENSOR KIRI KOSONG MLOMPONG ---
-  if (jarakKiri > BATAS_KIRI_ADA) {
-    // Jalan maju sedikit agar badan/poros roda melewati sudut tembok kiri sebelum berhenti
-    // Sesuaikan delay(220) dengan panjang bodi robot Anda
-    setMotor(advanceSpeed, advanceSpeed);
-    delay(220);
-
-    // Berhenti sebelum belok
-    setMotor(0, 0);
-    delay(200);
-
-    belokKiri();
-    resetPID();
-    return;
-  }
-
-  // --- KONDISI 3: SUSUR DINDING KIRI (PID) ---
-  error = JARAK_TARGET_KIRI - jarakKiri;
+  // --- KONDISI 2: SUSUR DINDING KIRI & BELOK KIRI OTOMATIS VIA PID ---
+  float jarakKiriTerbatas = min(jarakKiri, MAX_JARAK_PID);
+  error = JARAK_TARGET_KIRI - jarakKiriTerbatas;
 
   integral += error;
   integral = constrain(integral, -100, 100);
@@ -112,8 +99,8 @@ void loop() {
   float pidValue = (Kp * error) + (Ki * integral) + (Kd * derivative);
   lastError = error;
 
-  int leftMotorSpeed  = constrain(baseSpeed + pidValue, -maxSpeed, maxSpeed);
-  int rightMotorSpeed = constrain(baseSpeed - pidValue, -maxSpeed, maxSpeed);
+  int leftMotorSpeed  = constrain(baseSpeed + pidValue, minPidLeftSpeed, maxSpeed);
+  int rightMotorSpeed = constrain(baseSpeed - pidValue, 0, maxSpeed);
 
   setMotor(leftMotorSpeed, rightMotorSpeed);
   delay(15);
@@ -129,32 +116,43 @@ float bacaUltrasonik(int trigPin, int echoPin) {
 
   long durasi = pulseIn(echoPin, HIGH, 25000);
   if (durasi == 0) {
-    return 999.0;
+    return 100.0;
   }
   return durasi * 0.0343 / 2.0;
 }
 
-// --- MANUVER BELOK ---
-void belokKiri() {
-  // Putar ke kiri di tempat (motor kiri mundur, motor kanan maju)
-  setMotor(-turnSpeed, turnSpeed);
-  delay(350); // Sesuaikan durasi agar pas 90 derajat
+// --- MANUVER PUTAR KIRI SAAT DEPAN MENTOK & KIRI KOSONG ---
+void belokKiriDepanMentok() {
+  setMotor(0, 0);
+  delay(100);
+
+  setMotor(-turnLeftSpeed, turnLeftSpeed);
+  delay(turnLeftMs);
 
   setMotor(0, 0);
-  delay(150);
+  delay(100);
 
-  // Maju sedikit setelah belok agar sensor kiri langsung menangkap dinding baru
   setMotor(baseSpeed, baseSpeed);
   delay(250);
+
+  resetPID();
 }
 
-void belokKanan() {
-  // Putar ke kanan di tempat (motor kiri maju, motor kanan mundur)
-  setMotor(turnSpeed, -turnSpeed);
-  delay(350); // Sesuaikan durasi agar pas 90 derajat
+// --- MANUVER BELOK KANAN 90 DERAJAT ---
+void belok90Kanan() {
+  setMotor(preTurnSpeed, preTurnSpeed);
+  delay(preTurnRightMs);
 
   setMotor(0, 0);
-  delay(150);
+  delay(100);
+
+  setMotor(turnRightSpeed, -turnRightSpeed);
+  delay(turnRightMs);
+
+  setMotor(0, 0);
+  delay(100);
+
+  resetPID();
 }
 
 void resetPID() {
